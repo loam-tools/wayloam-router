@@ -9,5 +9,6 @@ kotlin {
 
 dependencies {
     api(project(":router-api"))
+    implementation(libs.coroutines.core)
     testImplementation(libs.junit)
 }
