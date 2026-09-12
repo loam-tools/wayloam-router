@@ -23,4 +23,7 @@ data class RouteDiagnostics(
     val skippedAnchors: Int = 0,
     val retries: Int = 0,
     val plannerVersion: String = "",
+    val engineVersion: String = "",
+    val profileVersion: String = "",
+    val dataVersion: String = "",
 )
