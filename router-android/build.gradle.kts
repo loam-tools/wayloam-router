@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":router-core"))
     implementation(project(":router-data"))
     implementation(project(":router-brouter"))
+    implementation(project(":router-http"))
     implementation(libs.androidx.core.ktx)
 
     androidTestImplementation("androidx.test:core:1.7.0")
