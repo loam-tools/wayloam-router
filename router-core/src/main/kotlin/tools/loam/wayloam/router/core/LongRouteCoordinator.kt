@@ -35,7 +35,11 @@ class LongRouteCoordinator(
             onEvent(RoutingEvent.CacheHit(key))
             onEvent(RoutingEvent.Completed(cached.metrics.distanceMeters, cached.segments.size))
             return cached.copy(cacheHit = true, diagnostics = RouteDiagnostics(
-                elapsedMillis = elapsed(), plannerVersion = sectionPlanner.version,
+                elapsedMillis = elapsed(),
+                plannerVersion = sectionPlanner.version,
+                engineVersion = identity.engineVersion,
+                profileVersion = identity.profileVersion,
+                dataVersion = identity.dataVersion,
             ))
         }
 
@@ -114,8 +118,18 @@ class LongRouteCoordinator(
         }
         currentCoroutineContext().ensureActive()
         val result = RouteStitcher.stitch(routed, "${sectionEngine.engineId}/${sectionEngine.engineVersion}")
-            .copy(diagnostics = RouteDiagnostics(elapsed(), firstSection, cacheHits, engineCalls,
-                skipped, retries, sectionPlanner.version))
+            .copy(diagnostics = RouteDiagnostics(
+                elapsedMillis = elapsed(),
+                firstSectionMillis = firstSection,
+                sectionCacheHits = cacheHits,
+                engineCalls = engineCalls,
+                skippedAnchors = skipped,
+                retries = retries,
+                plannerVersion = sectionPlanner.version,
+                engineVersion = identity.engineVersion,
+                profileVersion = identity.profileVersion,
+                dataVersion = identity.dataVersion,
+            ))
         currentCoroutineContext().ensureActive()
         cache.put(key, result)
         onEvent(RoutingEvent.Completed(result.metrics.distanceMeters, result.segments.size))
