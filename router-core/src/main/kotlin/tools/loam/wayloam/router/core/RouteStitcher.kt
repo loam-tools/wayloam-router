@@ -25,8 +25,24 @@ object RouteStitcher {
                 }
             }
         }
-        return RouteResult(points, normalized.fold(RouteMetrics.ZERO) { total, segment ->
-            total + segment.metrics
-        }, normalized, engine)
+        val annotations = buildList {
+            var offset = 0.0
+            normalized.forEach { segment ->
+                segment.annotations.forEach { annotation ->
+                    add(annotation.copy(
+                        startDistanceMeters = annotation.startDistanceMeters + offset,
+                        endDistanceMeters = annotation.endDistanceMeters + offset,
+                    ))
+                }
+                offset += segment.metrics.distanceMeters.toDouble()
+            }
+        }
+        val result = RouteResult(
+            points = points,
+            metrics = normalized.fold(RouteMetrics.ZERO) { total, segment -> total + segment.metrics },
+            segments = normalized,
+            engine = engine,
+        )
+        return result.copy(analysis = RouteAnalyzer.analyze(result, annotations))
     }
 }
