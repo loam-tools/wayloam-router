@@ -25,6 +25,13 @@ sourceSets {
 
 tasks.withType<Test>().configureEach {
     systemProperty("wayloam.repoRoot", rootProject.projectDir.absolutePath)
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
+    }
 }
 
 dependencies {
