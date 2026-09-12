@@ -25,6 +25,7 @@ data class RouteRequest(
     val via: List<GeoPoint> = emptyList(),
     val maxSectionDistanceKm: Double = 220.0,
     val timeoutMillis: Long = 600_000L,
+    val preferences: RoutePreferences = RoutePreferences.forProfile(profile),
 ) {
     init {
         require(maxSectionDistanceKm.isFinite() && maxSectionDistanceKm >= 20.0) {
