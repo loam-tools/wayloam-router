@@ -170,6 +170,73 @@ class VerifiedRoutingDataManagerTest {
         }
     }
 
+    @Test
+    fun failedRefreshPreservesTheInstalledVersion() = runBlocking {
+        val root = Files.createTempDirectory("refresh-preserve")
+        val oldBytes = "old-valid".toByteArray()
+        var artifact = Rd5RemoteArtifact(tile, "fixture", "v1", "https://example.invalid/tile",
+            oldBytes.size.toLong(), sha256(oldBytes))
+        var fail = false
+        val manager = VerifiedRoutingDataManager(root, RoutingDataManifest { artifact }, RoutingDataTransport { request ->
+            if (fail) throw java.io.IOException("network unavailable")
+            Files.write(request.destination, oldBytes)
+            RoutingDataDownloadResult(oldBytes.size.toLong(), false)
+        })
+        try {
+            manager.ensureTile(tile)
+            artifact = artifact.copy(sourceVersion = "v2", sha256 = sha256("new-valid".toByteArray()))
+            fail = true
+            assertTrue(runCatching { manager.ensureTile(tile) }.isFailure)
+            assertArrayEquals(oldBytes, Files.readAllBytes(root.resolve(tile.fileName)))
+        } finally { root.toFile().deleteRecursively() }
+    }
+
+    @Test
+    fun savedChecksumDetectsSameSizeCorruptionWithoutRemoteDigest() = runBlocking {
+        val root = Files.createTempDirectory("local-hash")
+        val bytes = "original".toByteArray()
+        val artifact = Rd5RemoteArtifact(tile, "fixture", "etag:1", "https://example.invalid/tile", bytes.size.toLong())
+        var downloads = 0
+        val manager = VerifiedRoutingDataManager(root, StaticRoutingDataManifest(listOf(artifact)), RoutingDataTransport { request ->
+            downloads++
+            Files.write(request.destination, bytes)
+            RoutingDataDownloadResult(bytes.size.toLong(), false)
+        })
+        try {
+            manager.ensureTile(tile)
+            Files.write(root.resolve(tile.fileName), "modified".toByteArray())
+            assertEquals(RoutingTileState.CORRUPT, manager.status(tile).state)
+            manager.ensureTile(tile)
+            assertEquals(2, downloads)
+            assertArrayEquals(bytes, Files.readAllBytes(root.resolve(tile.fileName)))
+        } finally { root.toFile().deleteRecursively() }
+    }
+
+    @Test
+    fun aChangedSourceNeverResumesAnOldUnpinnedPartial() = runBlocking {
+        val root = Files.createTempDirectory("partial-version")
+        var artifact = Rd5RemoteArtifact(tile, "fixture", "v1", "https://example.invalid/tile", 8)
+        var first = true
+        var offset = -1L
+        val manager = VerifiedRoutingDataManager(root, RoutingDataManifest { artifact }, RoutingDataTransport { request ->
+            if (first) {
+                Files.write(request.destination, "old".toByteArray())
+                first = false
+                throw java.io.IOException("interrupted")
+            }
+            offset = request.resumeFromBytes
+            Files.write(request.destination, "new-data".toByteArray())
+            RoutingDataDownloadResult(8, false)
+        })
+        try {
+            assertTrue(runCatching { manager.ensureTile(tile) }.isFailure)
+            artifact = artifact.copy(sourceVersion = "v2")
+            manager.ensureTile(tile)
+            assertEquals(0L, offset)
+            assertArrayEquals("new-data".toByteArray(), Files.readAllBytes(root.resolve(tile.fileName)))
+        } finally { root.toFile().deleteRecursively() }
+    }
+
     private fun manager(
         root: java.nio.file.Path,
         bytes: ByteArray,
@@ -195,3 +262,4 @@ class VerifiedRoutingDataManagerTest {
             .digest(bytes)
             .joinToString("") { "%02x".format(it) }
 }
+

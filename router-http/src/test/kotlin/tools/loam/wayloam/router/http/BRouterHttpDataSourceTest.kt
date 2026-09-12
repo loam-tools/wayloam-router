@@ -128,10 +128,30 @@ class BRouterHttpDataSourceTest {
         }
     }
 
+    @Test
+    fun aChangedRemoteVersionCannotAppendToTheOldPartial() = runBlocking {
+        LocalHttpServer(listOf(HttpFixtureResponse(206,
+            mapOf("Content-Length" to "5", "Content-Range" to "bytes 5-9/10", "ETag" to "new"),
+            "world".toByteArray()))).use { server ->
+            val destination = Files.createTempFile("changed-source", ".part")
+            try {
+                Files.write(destination, "hello".toByteArray())
+                val error = runCatching {
+                    BRouterHttpDataSource(baseUrl = server.baseUrl).download(RoutingDataDownloadRequest(
+                        artifact(server, 10).copy(sourceVersion = "etag:old"), destination, 5))
+                }.exceptionOrNull()
+                server.await()
+                assertTrue(error is RoutingDataHttpException)
+                assertEquals("old", server.requests.single().headers["if-range"])
+                assertArrayEquals("hello".toByteArray(), Files.readAllBytes(destination))
+            } finally { Files.deleteIfExists(destination) }
+        }
+    }
+
     private fun artifact(server: LocalHttpServer, size: Long) = Rd5RemoteArtifact(
         tile = tile,
         sourceId = "fixture",
-        sourceVersion = "etag:fixture",
+        sourceVersion = "fixture",
         downloadUrl = server.baseUrl + tile.fileName,
         sizeBytes = size,
         sha256 = null,
@@ -219,3 +239,4 @@ private class LocalHttpServer(
         else -> "Fixture"
     }
 }
+

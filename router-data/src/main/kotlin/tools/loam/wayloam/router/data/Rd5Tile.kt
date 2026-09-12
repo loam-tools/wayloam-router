@@ -41,21 +41,28 @@ object Rd5TileSet {
     fun forEnvelope(points: List<GeoPoint>): Set<Rd5TileId> {
         require(points.isNotEmpty())
         val ids = points.map(Rd5TileId::from)
-        val minLon = ids.minOf { it.westLongitude }
-        val maxLon = ids.maxOf { it.westLongitude }
+        // Remove the largest empty arc so a dateline crossing does not request the whole planet.
+        val columns = ids.map { (it.westLongitude + 180) / 5 }.distinct().sorted()
+        val gaps = columns.indices.map { i ->
+            val next = if (i == columns.lastIndex) columns.first() + 72 else columns[i + 1]
+            next - columns[i]
+        }
+        val gapIndex = gaps.indices.maxBy { gaps[it] }
+        val startColumn = columns[(gapIndex + 1) % columns.size]
+        val columnCount = 73 - gaps[gapIndex]
         val minLat = ids.minOf { it.southLatitude }
         val maxLat = ids.maxOf { it.southLatitude }
 
         return buildSet {
-            var lon = minLon
-            while (lon <= maxLon) {
+            repeat(columnCount) { offset ->
+                val lon = ((startColumn + offset) % 72) * 5 - 180
                 var lat = minLat
                 while (lat <= maxLat) {
                     add(Rd5TileId(lon, lat))
                     lat += 5
                 }
-                lon += 5
             }
         }
     }
 }
+

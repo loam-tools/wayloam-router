@@ -7,6 +7,12 @@ import tools.loam.wayloam.router.api.GeoPoint
 
 class Rd5TileTest {
     @Test
+    fun datelineCrossingUsesOnlyAdjacentTiles() {
+        val tiles = Rd5TileSet.forEnvelope(listOf(GeoPoint(10.0, 179.9), GeoPoint(10.0, -179.9)))
+        assertEquals(setOf("E175_N10.rd5", "W180_N10.rd5"), tiles.map { it.fileName }.toSet())
+    }
+
+    @Test
     fun resolvesKnownEuropeanTiles() {
         assertEquals("E5_N45.rd5", Rd5TileId.from(GeoPoint(49.3988, 8.6724)).fileName)
         assertEquals("E10_N55.rd5", Rd5TileId.from(GeoPoint(59.9139, 10.7522)).fileName)
@@ -58,3 +64,4 @@ class Rd5TileTest {
         )
     }
 }
+
