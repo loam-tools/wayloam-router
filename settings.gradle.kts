@@ -20,6 +20,7 @@ include(
     ":router-api",
     ":router-core",
     ":router-data",
+    ":router-http",
     ":router-brouter",
     ":router-android",
     ":router-benchmark",
