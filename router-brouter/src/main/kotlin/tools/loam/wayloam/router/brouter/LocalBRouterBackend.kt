@@ -83,10 +83,22 @@ class LocalBRouterBackend(
                         context.waypointCatchingRange = 1_000.0
                         activeEngine.set(engine)
                         if (!continuation.isActive) engine.terminate()
-                        engine.doRun(maxRunningTimeMillis)
+
+                        val dependencyObserver = BRouterRouteMetadata.DataDependencyObserver(
+                            engine = engine,
+                            segmentDirectory = segmentDirectory,
+                        )
+                        dependencyObserver.start()
+                        val dependencies = try {
+                            engine.doRun(maxRunningTimeMillis)
+                            dependencyObserver.finish()
+                        } finally {
+                            dependencyObserver.close()
+                        }
+
                         engine.getErrorMessage()?.let { throw classifyBRouterFailure(it) }
                         val track = engine.getFoundTrack() ?: throw NoRouteException("BRouter returned no route")
-                        track.toBackendResult(engine)
+                        track.toBackendResult(dependencies)
                     }
                     if (continuation.isActive) continuation.resumeWith(result)
                 }
@@ -102,7 +114,7 @@ class LocalBRouterBackend(
             }
         }
 
-    private fun OsmTrack.toBackendResult(engine: RoutingEngine): BRouterBackendResult {
+    private fun OsmTrack.toBackendResult(dataDependencies: Map<String, String>): BRouterBackendResult {
         if (nodes.size < 2) throw NoRouteException("BRouter returned an empty route")
 
         val points = nodes.map { node ->
@@ -132,7 +144,7 @@ class LocalBRouterBackend(
                 durationSeconds = max(0, getTotalSeconds()).toLong(),
             ),
             annotations = BRouterRouteMetadata.annotations(this),
-            dataDependencies = BRouterRouteMetadata.dataDependencies(engine, segmentDirectory),
+            dataDependencies = dataDependencies,
         )
     }
 
