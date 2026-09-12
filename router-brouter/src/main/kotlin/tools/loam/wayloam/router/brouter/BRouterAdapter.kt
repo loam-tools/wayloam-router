@@ -2,8 +2,10 @@ package tools.loam.wayloam.router.brouter
 
 import tools.loam.wayloam.router.api.GeoPoint
 import tools.loam.wayloam.router.api.RouteMetrics
+import tools.loam.wayloam.router.api.RoutePreferences
 import tools.loam.wayloam.router.api.RouteProfile
 import tools.loam.wayloam.router.api.RouteSegment
+import tools.loam.wayloam.router.api.SurfacePreference
 import tools.loam.wayloam.router.core.RouteSectionEngine
 
 object BRouterBaseline {
@@ -77,6 +79,30 @@ object WayloamProfiles {
         RouteProfile.TOURING -> TOURING
         RouteProfile.BIKEPACKING -> BIKEPACKING
     }
+
+    /**
+     * Applies only variables already exposed by the pinned upstream profiles. Preferences that need
+     * new profile logic (for example explicit tunnel or cycleway penalties) stay in the public model
+     * and cache identity until that behavior can be implemented and benchmarked without pretending
+     * the upstream profile already supports it.
+     */
+    fun forRequest(profile: RouteProfile, preferences: RoutePreferences): BRouterProfilePreset {
+        val base = forProfile(profile)
+        val parameters = base.parameters.toMutableMap().apply {
+            this["allow_steps"] = preferences.allowSteps.flag()
+            this["allow_ferries"] = preferences.allowFerries.flag()
+            if ("avoid_unsafe" in this) this["avoid_unsafe"] = preferences.avoidMajorRoads.flag()
+            if ("consider_traffic" in this) this["consider_traffic"] =
+                (preferences.trafficSensitivity >= 0.5).flag()
+            if ("consider_elevation" in this) this["consider_elevation"] =
+                (preferences.hillSensitivity >= 0.5).flag()
+            if ("consider_forest" in this) this["consider_forest"] =
+                (preferences.surfacePreference == SurfacePreference.PREFER_UNPAVED).flag()
+        }
+        return BRouterProfilePreset(base.baseProfile, parameters)
+    }
+
+    private fun Boolean.flag(): String = if (this) ON else OFF
 }
 
 data class BRouterBackendRequest(
@@ -102,19 +128,27 @@ class BRouterSectionEngine(
     private val backend: EmbeddedBRouterBackend,
 ) : RouteSectionEngine {
     override val engineId: String = "brouter"
-    override val engineVersion: String = "${BRouterBaseline.RELEASE}+wayloam.2"
+    override val engineVersion: String = "${BRouterBaseline.RELEASE}+wayloam.3"
 
     override suspend fun routeSection(
         index: Int,
         start: GeoPoint,
         end: GeoPoint,
         profile: RouteProfile,
+    ): RouteSegment = routeSection(index, start, end, profile, RoutePreferences.forProfile(profile))
+
+    override suspend fun routeSection(
+        index: Int,
+        start: GeoPoint,
+        end: GeoPoint,
+        profile: RouteProfile,
+        preferences: RoutePreferences,
     ): RouteSegment {
         val result = backend.route(
             BRouterBackendRequest(
                 start = start,
                 end = end,
-                preset = WayloamProfiles.forProfile(profile),
+                preset = WayloamProfiles.forRequest(profile, preferences),
             )
         )
         require(result.points.size >= 2) { "BRouter returned fewer than two route points" }
@@ -128,4 +162,3 @@ class BRouterSectionEngine(
         )
     }
 }
-
