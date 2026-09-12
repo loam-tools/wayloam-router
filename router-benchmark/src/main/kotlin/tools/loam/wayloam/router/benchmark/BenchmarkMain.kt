@@ -78,7 +78,10 @@ object BenchmarkCatalog {
     )
 }
 
-fun main() {
+fun main(args: Array<String>) {
+    if (args.isNotEmpty() && args[0] != "--catalogue") {
+        kotlin.system.exitProcess(runBenchmarks(args))
+    }
     println("WAYLOAM Router benchmark catalogue")
     println("id\ttier\tgeodesic_km\tfrom\tto")
     BenchmarkCatalog.routes.forEach { route ->
@@ -86,5 +89,6 @@ fun main() {
         println("${route.id}\t${route.tier}\t$distanceKm\t${route.startName}\t${route.endName}")
     }
     println()
-    println("Engine execution is intentionally disabled until the embedded BRouter backend is wired.")
+    println("Use --root DIR --data-version ID --route ID --output results.jsonl to execute offline benchmarks.")
 }
+

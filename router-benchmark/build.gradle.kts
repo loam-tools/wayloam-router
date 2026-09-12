@@ -16,5 +16,9 @@ dependencies {
     implementation(project(":router-core"))
     implementation(project(":router-data"))
     implementation(project(":router-brouter"))
+    implementation(project(":router-runtime"))
+    implementation(project(":router-http"))
+    implementation(libs.coroutines.core)
     testImplementation(libs.junit)
 }
+
