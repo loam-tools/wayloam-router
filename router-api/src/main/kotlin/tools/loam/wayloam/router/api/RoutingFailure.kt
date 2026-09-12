@@ -26,4 +26,5 @@ data class RouteDiagnostics(
     val engineVersion: String = "",
     val profileVersion: String = "",
     val dataVersion: String = "",
+    val staleCacheEntries: Int = 0,
 )
