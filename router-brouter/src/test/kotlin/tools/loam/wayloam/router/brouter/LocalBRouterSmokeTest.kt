@@ -4,7 +4,6 @@ import btools.mapcreator.OsmFastCutter
 import btools.mapcreator.PosUnifier
 import btools.mapcreator.WayLinker
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tools.loam.wayloam.router.api.GeoPoint
@@ -18,19 +17,22 @@ import javax.xml.stream.XMLStreamConstants
 
 class LocalBRouterSmokeTest {
     @Test
-    fun generatedRd5RoutesOfflineThroughEmbeddedEngine() = runBlocking {
+    fun generatedRd5RoutesOfflineThroughEmbeddedEngine() {
         System.setProperty("avoidMapPolling", "true")
 
-        val repoRoot = File(requireNotNull(System.getProperty("wayloam.repoRoot")))
+        val repoRoot = findRepositoryRoot()
         val upstream = File(repoRoot, "vendor/brouter")
         val fixtureDir = File(upstream, "brouter-map-creator/src/test/resources")
         val profileDir = File(upstream, "misc/profiles2")
         val pbf = File(fixtureDir, "dreieich.pbf")
         val osmGzip = File(fixtureDir, "dreieich.osm.gz")
 
-        assertTrue("Pinned PBF fixture is missing", pbf.isFile)
-        assertTrue("Pinned OSM fixture is missing", osmGzip.isFile)
-        assertTrue("Pinned BRouter profiles are missing", File(profileDir, "trekking.brf").isFile)
+        assertTrue("Pinned PBF fixture is missing: ${pbf.absolutePath}", pbf.isFile)
+        assertTrue("Pinned OSM fixture is missing: ${osmGzip.absolutePath}", osmGzip.isFile)
+        assertTrue(
+            "Pinned BRouter profiles are missing: ${File(profileDir, "trekking.brf").absolutePath}",
+            File(profileDir, "trekking.brf").isFile,
+        )
 
         val endpoints = selectRoutableWayEndpoints(osmGzip)
         val working = Files.createTempDirectory("wayloam-brouter-fixture").toFile()
@@ -43,7 +45,7 @@ class LocalBRouterSmokeTest {
                 workingDir = working,
             )
             assertTrue(
-                "Map creator did not produce any rd5 files",
+                "Map creator did not produce any rd5 files in ${segments.absolutePath}",
                 segments.listFiles().orEmpty().any { it.isFile && it.extension == "rd5" && it.length() > 0L },
             )
 
@@ -52,13 +54,15 @@ class LocalBRouterSmokeTest {
                 profileDirectory = profileDir,
                 maxRunningTimeMillis = 30_000L,
             )
-            val result = backend.route(
-                BRouterBackendRequest(
-                    start = endpoints.first,
-                    end = endpoints.second,
-                    preset = WayloamProfiles.forProfile(RouteProfile.TOURING),
+            val result = runBlocking {
+                backend.route(
+                    BRouterBackendRequest(
+                        start = endpoints.first,
+                        end = endpoints.second,
+                        preset = WayloamProfiles.forProfile(RouteProfile.TOURING),
+                    )
                 )
-            )
+            }
 
             assertTrue("Embedded route should contain geometry", result.points.size >= 2)
             assertTrue("Embedded route should have positive distance", result.metrics.distanceMeters > 0L)
@@ -73,6 +77,24 @@ class LocalBRouterSmokeTest {
         } finally {
             working.deleteRecursively()
         }
+    }
+
+    private fun findRepositoryRoot(): File {
+        val configured = System.getProperty("wayloam.repoRoot")
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::File)
+            ?.canonicalFile
+        if (configured != null && File(configured, "vendor/brouter").isDirectory) {
+            return configured
+        }
+
+        val start = File(System.getProperty("user.dir")).canonicalFile
+        return generateSequence(start) { current -> current.parentFile }
+            .firstOrNull { candidate -> File(candidate, "vendor/brouter").isDirectory }
+            ?: error(
+                "Could not locate repository root from ${start.absolutePath}; " +
+                    "expected an ancestor containing vendor/brouter"
+            )
     }
 
     private fun generateRd5Fixture(
@@ -100,6 +122,11 @@ class LocalBRouterSmokeTest {
         val profileAll = File(profileDir, "all.brf")
         val profileReport = File(profileDir, "trekking.brf")
         val profileCheck = File(profileDir, "softaccess.brf")
+
+        check(lookupFile.isFile) { "Missing lookups.dat: ${lookupFile.absolutePath}" }
+        check(profileAll.isFile) { "Missing all.brf: ${profileAll.absolutePath}" }
+        check(profileReport.isFile) { "Missing trekking.brf: ${profileReport.absolutePath}" }
+        check(profileCheck.isFile) { "Missing softaccess.brf: ${profileCheck.absolutePath}" }
 
         OsmFastCutter.doCut(
             lookupFile,
