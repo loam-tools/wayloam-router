@@ -16,6 +16,13 @@ data class BRouterProfilePreset(
     val baseProfile: String,
     val parameters: Map<String, String>,
 ) {
+    init {
+        require(baseProfile.isNotBlank())
+        require(parameters.values.all { it.toDoubleOrNull() != null }) {
+            "BRouter profile overrides must use numeric expression values"
+        }
+    }
+
     val versionKey: String = buildString {
         append(BRouterBaseline.RELEASE)
         append(':')
@@ -27,36 +34,39 @@ data class BRouterProfilePreset(
 }
 
 object WayloamProfiles {
+    private const val OFF = "0"
+    private const val ON = "1"
+
     val DIRECT = BRouterProfilePreset(
         baseProfile = "fastbike",
         parameters = mapOf(
-            "allow_steps" to "false",
-            "allow_ferries" to "true",
-            "consider_traffic" to "0.3",
-            "consider_elevation" to "true",
+            "allow_steps" to OFF,
+            "allow_ferries" to ON,
+            "consider_traffic" to ON,
+            "consider_elevation" to ON,
         ),
     )
 
     val TOURING = BRouterProfilePreset(
         baseProfile = "trekking",
         parameters = mapOf(
-            "allow_steps" to "false",
-            "allow_ferries" to "true",
-            "avoid_unsafe" to "true",
-            "consider_traffic" to "true",
-            "consider_elevation" to "true",
+            "allow_steps" to OFF,
+            "allow_ferries" to ON,
+            "avoid_unsafe" to ON,
+            "consider_traffic" to ON,
+            "consider_elevation" to ON,
         ),
     )
 
     val BIKEPACKING = BRouterProfilePreset(
         baseProfile = "trekking",
         parameters = mapOf(
-            "allow_steps" to "false",
-            "allow_ferries" to "true",
-            "avoid_unsafe" to "true",
-            "consider_traffic" to "true",
-            "consider_forest" to "true",
-            "consider_elevation" to "true",
+            "allow_steps" to OFF,
+            "allow_ferries" to ON,
+            "avoid_unsafe" to ON,
+            "consider_traffic" to ON,
+            "consider_forest" to ON,
+            "consider_elevation" to ON,
         ),
     )
 
