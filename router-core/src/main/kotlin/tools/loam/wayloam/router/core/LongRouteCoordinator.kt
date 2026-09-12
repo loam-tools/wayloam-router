@@ -68,7 +68,9 @@ class LongRouteCoordinator(
                     retries++
                     onEvent(RoutingEvent.SectionRetry(spec.index, attempt + 1, failure!!.code))
                 }
-                val sectionKey = RouteCacheKey.section(start, end, request.profile, identity)
+                val sectionKey = RouteCacheKey.section(
+                    start, end, request.profile, request.preferences, identity,
+                )
                 try {
                     val cached = cache.get(sectionKey)
                     val current = if (cached != null && cached.segments.size == 1) {
@@ -77,7 +79,9 @@ class LongRouteCoordinator(
                         cached.segments.single().copy(index = routed.size)
                     } else {
                         engineCalls++
-                        sectionEngine.routeSection(routed.size, start, end, request.profile)
+                        sectionEngine.routeSection(
+                            routed.size, start, end, request.profile, request.preferences,
+                        )
                     }
                     currentCoroutineContext().ensureActive()
                     require(current.index == routed.size) { "Engine returned an incorrect section index" }
