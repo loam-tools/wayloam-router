@@ -62,7 +62,7 @@ jobs:
             --output benchmark-artifacts/results.jsonl
       - name: Upload measurements, exact data manifest and GPX tracks
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wayloam-router-${{ inputs.route }}-${{ inputs.profile }}
           path: benchmark-artifacts/
