@@ -68,10 +68,15 @@ data class RouteSegment(
     val points: List<GeoPoint>,
     val metrics: RouteMetrics,
     val engine: String,
+    /** Distances are local to this segment; RouteStitcher shifts them into route coordinates. */
+    val annotations: List<RouteAnnotation> = emptyList(),
+    /** Exact data files opened by the engine and their local fingerprints at calculation time. */
+    val dataDependencies: Map<String, String> = emptyMap(),
 ) {
     init {
         require(index >= 0)
         require(points.size >= 2) { "A route segment must contain at least two points" }
+        require(dataDependencies.keys.none { '/' in it || '\\' in it }) { "Data dependency keys must be file names" }
     }
 }
 
@@ -82,11 +87,17 @@ data class RouteResult(
     val engine: String,
     val cacheHit: Boolean = false,
     val diagnostics: RouteDiagnostics = RouteDiagnostics(),
+    val analysis: RouteAnalysis = RouteAnalysis(),
 ) {
     init {
         require(points.size >= 2) { "A route must contain at least two points" }
         require(segments.isNotEmpty()) { "A route must contain at least one segment" }
     }
+
+    val dataDependencies: Map<String, String>
+        get() = buildMap {
+            segments.forEach { segment -> segment.dataDependencies.forEach { (name, fingerprint) -> put(name, fingerprint) } }
+        }
 }
 
 sealed interface RoutingEvent {
