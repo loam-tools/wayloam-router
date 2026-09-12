@@ -4,17 +4,22 @@ import btools.router.OsmTrack
 import btools.router.RoutingContext
 import btools.router.RoutingEngine
 import btools.router.RoutingParamCollector
+import btools.router.WayloamVoiceHintBridge
 import kotlinx.coroutines.suspendCancellableCoroutine
 import tools.loam.wayloam.router.api.GeoPoint
+import tools.loam.wayloam.router.api.RouteManeuver
+import tools.loam.wayloam.router.api.RouteManeuverType
 import tools.loam.wayloam.router.api.RouteMetrics
-import java.io.File
-import java.util.concurrent.ArrayBlockingQueue
-import java.util.concurrent.ThreadPoolExecutor
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.atomic.AtomicReference
 import tools.loam.wayloam.router.api.RoutingException
 import tools.loam.wayloam.router.api.RoutingFailureCode
+import tools.loam.wayloam.router.core.GeoMath
+import java.io.File
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -145,7 +150,59 @@ class LocalBRouterBackend(
             ),
             annotations = BRouterRouteMetadata.annotations(this),
             dataDependencies = dataDependencies,
+            maneuvers = maneuvers(points),
         )
+    }
+
+    private fun OsmTrack.maneuvers(points: List<GeoPoint>): List<RouteManeuver> {
+        if (points.size < 2) return emptyList()
+        val cumulative = DoubleArray(points.size)
+        for (index in 1 until points.size) {
+            cumulative[index] = cumulative[index - 1] + GeoMath.distanceMeters(points[index - 1], points[index])
+        }
+
+        return WayloamVoiceHintBridge.read(this).mapNotNull { hint ->
+            val index = hint.indexInTrack
+            if (index !in points.indices) return@mapNotNull null
+            val type = hint.command.toManeuverType() ?: return@mapNotNull null
+            val angle = hint.angle
+                .takeIf { it.isFinite() && abs(it) <= 360.0 }
+                ?.roundToInt()
+            val exit = if (type == RouteManeuverType.ROUNDABOUT || type == RouteManeuverType.ROUNDABOUT_LEFT) {
+                abs(hint.exitNumber).takeIf { it > 0 }
+            } else {
+                null
+            }
+            RouteManeuver(
+                type = type,
+                pointIndex = index,
+                point = points[index],
+                distanceAlongRouteMeters = cumulative[index],
+                distanceToNextMeters = hint.distanceToNext.coerceAtLeast(0.0),
+                turnAngleDegrees = angle,
+                roundaboutExit = exit,
+            )
+        }
+    }
+
+    private fun Int.toManeuverType(): RouteManeuverType? = when (this) {
+        1 -> RouteManeuverType.CONTINUE
+        2 -> RouteManeuverType.TURN_LEFT
+        3 -> RouteManeuverType.SLIGHT_LEFT
+        4 -> RouteManeuverType.SHARP_LEFT
+        5 -> RouteManeuverType.TURN_RIGHT
+        6 -> RouteManeuverType.SLIGHT_RIGHT
+        7 -> RouteManeuverType.SHARP_RIGHT
+        8 -> RouteManeuverType.KEEP_LEFT
+        9 -> RouteManeuverType.KEEP_RIGHT
+        10, 11, 15 -> RouteManeuverType.U_TURN
+        12 -> RouteManeuverType.OFF_ROUTE
+        13 -> RouteManeuverType.ROUNDABOUT
+        14 -> RouteManeuverType.ROUNDABOUT_LEFT
+        16 -> RouteManeuverType.BEELINE
+        17 -> RouteManeuverType.EXIT_LEFT
+        18 -> RouteManeuverType.EXIT_RIGHT
+        else -> null
     }
 
     companion object {

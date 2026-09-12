@@ -2,6 +2,7 @@ package tools.loam.wayloam.router.brouter
 
 import tools.loam.wayloam.router.api.GeoPoint
 import tools.loam.wayloam.router.api.RouteAnnotation
+import tools.loam.wayloam.router.api.RouteManeuver
 import tools.loam.wayloam.router.api.RouteMetrics
 import tools.loam.wayloam.router.api.RoutePreferences
 import tools.loam.wayloam.router.api.RouteProfile
@@ -41,6 +42,14 @@ object WayloamProfiles {
 
     private const val OFF = "0"
     private const val ON = "1"
+    private const val STRUCTURED_TURN_INSTRUCTIONS = "2"
+
+    private val turnInstructionParameters = mapOf(
+        // Locus-style keeps exit-left/right distinct while BRouter still generates its native
+        // graph-aware turn and roundabout semantics. These variables do not alter route cost.
+        "turnInstructionMode" to STRUCTURED_TURN_INSTRUCTIONS,
+        "turnInstructionRoundabouts" to ON,
+    )
 
     val DIRECT = BRouterProfilePreset(
         baseProfile = "fastbike",
@@ -49,7 +58,7 @@ object WayloamProfiles {
             "allow_ferries" to ON,
             "consider_traffic" to ON,
             "consider_elevation" to ON,
-        ),
+        ) + turnInstructionParameters,
     )
 
     val TOURING = BRouterProfilePreset(
@@ -60,7 +69,7 @@ object WayloamProfiles {
             "avoid_unsafe" to ON,
             "consider_traffic" to ON,
             "consider_elevation" to ON,
-        ),
+        ) + turnInstructionParameters,
     )
 
     val BIKEPACKING = BRouterProfilePreset(
@@ -72,7 +81,7 @@ object WayloamProfiles {
             "consider_traffic" to ON,
             "consider_forest" to ON,
             "consider_elevation" to ON,
-        ),
+        ) + turnInstructionParameters,
     )
 
     fun forProfile(profile: RouteProfile): BRouterProfilePreset = when (profile) {
@@ -112,6 +121,7 @@ data class BRouterBackendResult(
     val metrics: RouteMetrics,
     val annotations: List<RouteAnnotation> = emptyList(),
     val dataDependencies: Map<String, String> = emptyMap(),
+    val maneuvers: List<RouteManeuver> = emptyList(),
 )
 
 /**
@@ -126,7 +136,7 @@ class BRouterSectionEngine(
     private val backend: EmbeddedBRouterBackend,
 ) : RouteSectionEngine {
     override val engineId: String = "brouter"
-    override val engineVersion: String = "${BRouterBaseline.RELEASE}+wayloam.4"
+    override val engineVersion: String = "${BRouterBaseline.RELEASE}+wayloam.5"
 
     override suspend fun routeSection(
         index: Int,
@@ -159,6 +169,7 @@ class BRouterSectionEngine(
             engine = "$engineId/$engineVersion",
             annotations = result.annotations,
             dataDependencies = result.dataDependencies,
+            maneuvers = result.maneuvers,
         )
     }
 }

@@ -10,6 +10,7 @@ kotlin {
 sourceSets {
     named("main") {
         java.srcDirs(
+            "src/main/java",
             "../vendor/brouter/brouter-util/src/main/java",
             "../vendor/brouter/brouter-expressions/src/main/java",
             "../vendor/brouter/brouter-codec/src/main/java",

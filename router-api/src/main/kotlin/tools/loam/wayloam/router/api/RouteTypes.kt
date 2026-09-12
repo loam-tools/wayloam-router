@@ -72,11 +72,14 @@ data class RouteSegment(
     val annotations: List<RouteAnnotation> = emptyList(),
     /** Exact data files opened by the engine and their local fingerprints at calculation time. */
     val dataDependencies: Map<String, String> = emptyMap(),
+    /** Maneuver point indices/distances are local until RouteStitcher combines the route. */
+    val maneuvers: List<RouteManeuver> = emptyList(),
 ) {
     init {
         require(index >= 0)
         require(points.size >= 2) { "A route segment must contain at least two points" }
         require(dataDependencies.keys.none { '/' in it || '\\' in it }) { "Data dependency keys must be file names" }
+        require(maneuvers.all { it.pointIndex in points.indices }) { "Maneuver point index must belong to the segment" }
     }
 }
 
@@ -88,10 +91,13 @@ data class RouteResult(
     val cacheHit: Boolean = false,
     val diagnostics: RouteDiagnostics = RouteDiagnostics(),
     val analysis: RouteAnalysis = RouteAnalysis(),
+    /** Global route-coordinate maneuvers stitched from all routed sections. */
+    val maneuvers: List<RouteManeuver> = emptyList(),
 ) {
     init {
         require(points.size >= 2) { "A route must contain at least two points" }
         require(segments.isNotEmpty()) { "A route must contain at least one segment" }
+        require(maneuvers.all { it.pointIndex in points.indices }) { "Maneuver point index must belong to the route" }
     }
 
     val dataDependencies: Map<String, String>

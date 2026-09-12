@@ -37,11 +37,30 @@ object RouteStitcher {
                 offset += segment.metrics.distanceMeters.toDouble()
             }
         }
+        val maneuvers = buildList {
+            var pointOffset = 0
+            var distanceOffset = 0.0
+            normalized.forEach { segment ->
+                segment.maneuvers.forEach { maneuver ->
+                    add(
+                        maneuver.copy(
+                            pointIndex = maneuver.pointIndex + pointOffset,
+                            distanceAlongRouteMeters = maneuver.distanceAlongRouteMeters + distanceOffset,
+                        )
+                    )
+                }
+                pointOffset += segment.points.size - 1
+                distanceOffset += segment.metrics.distanceMeters.toDouble()
+            }
+        }.distinctBy { maneuver ->
+            Triple(maneuver.pointIndex, maneuver.type, maneuver.roundaboutExit)
+        }
         val result = RouteResult(
             points = points,
             metrics = normalized.fold(RouteMetrics.ZERO) { total, segment -> total + segment.metrics },
             segments = normalized,
             engine = engine,
+            maneuvers = maneuvers,
         )
         return result.copy(analysis = RouteAnalyzer.analyze(result, annotations))
     }

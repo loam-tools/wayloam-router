@@ -73,7 +73,20 @@ class FileRouteCache(
                             put(name, fingerprint)
                         }
                     }
-                    RouteSegment(i, start, end, geometry, metrics, label, annotations, dependencies)
+                    val maneuverCount = input.readInt()
+                    if (maneuverCount !in 0..MAX_MANEUVERS_PER_SEGMENT) throw IOException("Invalid maneuver count")
+                    val maneuvers = List(maneuverCount) { input.readManeuver() }
+                    RouteSegment(
+                        index = i,
+                        start = start,
+                        end = end,
+                        points = geometry,
+                        metrics = metrics,
+                        engine = label,
+                        annotations = annotations,
+                        dataDependencies = dependencies,
+                        maneuvers = maneuvers,
+                    )
                 }
                 if (input.read() != -1) throw IOException("Trailing cache data")
                 RouteStitcher.stitch(segments, engine)
@@ -125,6 +138,9 @@ class FileRouteCache(
                         output.writeUTF(name)
                         output.writeUTF(fingerprint)
                     }
+                    if (segment.maneuvers.size > MAX_MANEUVERS_PER_SEGMENT) throw IOException("Too many maneuvers")
+                    output.writeInt(segment.maneuvers.size)
+                    segment.maneuvers.forEach { output.writeManeuver(it) }
                 }
             }
             val payload = bytes.toByteArray()
@@ -153,7 +169,7 @@ class FileRouteCache(
         if (!Files.isDirectory(directory)) return
         Files.list(directory).use { stream ->
             stream.iterator().asSequence()
-                .filter(Files::isRegularFile)
+                .filter { Files.isRegularFile(it) }
                 .filter { path ->
                     val name = path.fileName.toString()
                     name.endsWith(".route") || (name.startsWith("route-") && name.endsWith(".tmp"))
@@ -231,6 +247,26 @@ class FileRouteCache(
         bikeCarryLikely = readNullableBoolean(),
     )
 
+    private fun DataOutputStream.writeManeuver(maneuver: RouteManeuver) {
+        writeInt(maneuver.type.ordinal)
+        writeInt(maneuver.pointIndex)
+        writePoint(maneuver.point)
+        writeDouble(maneuver.distanceAlongRouteMeters)
+        writeDouble(maneuver.distanceToNextMeters)
+        writeNullableInt(maneuver.turnAngleDegrees)
+        writeNullableInt(maneuver.roundaboutExit)
+    }
+
+    private fun DataInputStream.readManeuver() = RouteManeuver(
+        type = readEnum(RouteManeuverType.entries),
+        pointIndex = readInt(),
+        point = readPoint(),
+        distanceAlongRouteMeters = readDouble(),
+        distanceToNextMeters = readDouble(),
+        turnAngleDegrees = readNullableInt(),
+        roundaboutExit = readNullableInt(),
+    )
+
     private fun DataOutputStream.writeNullableBoolean(value: Boolean?) {
         writeByte(when (value) { null -> 0; false -> 1; true -> 2 })
     }
@@ -242,6 +278,13 @@ class FileRouteCache(
         else -> throw IOException("Invalid nullable boolean")
     }
 
+    private fun DataOutputStream.writeNullableInt(value: Int?) {
+        writeBoolean(value != null)
+        value?.let(::writeInt)
+    }
+
+    private fun DataInputStream.readNullableInt(): Int? = if (readBoolean()) readInt() else null
+
     private fun <T : Enum<T>> DataInputStream.readEnum(values: List<T>): T {
         val ordinal = readInt()
         if (ordinal !in values.indices) throw IOException("Invalid enum ordinal")
@@ -249,9 +292,10 @@ class FileRouteCache(
     }
 
     companion object {
-        private const val MAGIC = 0x574C5203
+        private const val MAGIC = 0x574C5204
         private const val MAX_ANNOTATIONS_PER_SEGMENT = 100_000
         private const val MAX_DEPENDENCIES_PER_SEGMENT = 512
+        private const val MAX_MANEUVERS_PER_SEGMENT = 100_000
         private val KEY_PATTERN = Regex("[a-f0-9]{64}")
         private val FILE_PATTERN = Regex("[a-f0-9]{64}\\.route")
     }
