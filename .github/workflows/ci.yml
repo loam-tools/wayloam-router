@@ -50,6 +50,7 @@ jobs:
           :router-api:test
           :router-core:test
           :router-data:test
+          :router-http:test
           :router-brouter:test
           :router-benchmark:test
           --stacktrace
