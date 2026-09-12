@@ -4,11 +4,14 @@ import btools.router.OsmTrack
 import btools.router.RoutingEngine
 import tools.loam.wayloam.router.api.*
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.LockSupport
 
 /**
  * Extraction against the pinned BRouter baseline. WayTags come from BRouter's public
- * [OsmTrack.aggregateMessages] output. Tile observation is intentionally isolated here because the
- * pinned engine does not expose its NodesCache through a public API.
+ * [OsmTrack.aggregateMessages] output. Tile observation is isolated here because upstream closes
+ * and nulls RoutingEngine.nodesCache before doRun() returns.
  */
 internal object BRouterRouteMetadata {
     fun annotations(track: OsmTrack): List<RouteAnnotation> {
@@ -27,18 +30,59 @@ internal object BRouterRouteMetadata {
         }
     }
 
-    /** Exact RD5 files opened by this engine invocation, with cheap local replacement fingerprints. */
-    fun dataDependencies(engine: RoutingEngine, segmentDirectory: File): Map<String, String> =
-        runCatching {
-            val nodesCacheField = RoutingEngine::class.java.getDeclaredField("nodesCache").apply {
-                isAccessible = true
+    /**
+     * Retains the exact NodesCache object while RoutingEngine is active. The cache's fileCache is
+     * cumulative; NodesCache.close() closes file handles but does not erase that map, so it remains
+     * safe to inspect after doRun() has completed.
+     */
+    class DataDependencyObserver(
+        private val engine: RoutingEngine,
+        private val segmentDirectory: File,
+    ) : AutoCloseable {
+        private val running = AtomicBoolean(false)
+        private val retainedCache = AtomicReference<Any?>()
+        private var thread: Thread? = null
+
+        fun start() {
+            check(running.compareAndSet(false, true)) { "Observer already started" }
+            thread = Thread({
+                while (running.get() && retainedCache.get() == null) {
+                    retainCurrentCache()
+                    if (retainedCache.get() == null) LockSupport.parkNanos(POLL_NANOS)
+                }
+            }, "wayloam-rd5-observer").apply {
+                isDaemon = true
+                start()
             }
-            val nodesCache = nodesCacheField.get(engine) ?: return@runCatching emptyMap()
-            val fileCacheField = nodesCache.javaClass.getDeclaredField("fileCache").apply {
-                isAccessible = true
-            }
+        }
+
+        fun finish(): Map<String, String> {
+            running.set(false)
+            thread?.join(250L)
+            retainCurrentCache()
+            return dependenciesFrom(retainedCache.get(), segmentDirectory)
+        }
+
+        override fun close() {
+            running.set(false)
+            thread?.interrupt()
+        }
+
+        private fun retainCurrentCache() {
+            if (retainedCache.get() != null) return
+            val cache = runCatching {
+                NODES_CACHE_FIELD.get(engine)
+            }.getOrNull()
+            if (cache != null) retainedCache.compareAndSet(null, cache)
+        }
+    }
+
+    private fun dependenciesFrom(nodesCache: Any?, segmentDirectory: File): Map<String, String> {
+        if (nodesCache == null) return emptyMap()
+        return runCatching {
             @Suppress("UNCHECKED_CAST")
-            val fileCache = fileCacheField.get(nodesCache) as? Map<String, *> ?: return@runCatching emptyMap()
+            val fileCache = FILE_CACHE_FIELD.get(nodesCache) as? Map<String, *>
+                ?: return@runCatching emptyMap()
             fileCache.keys.asSequence()
                 .map { "$it.rd5" }
                 .mapNotNull { fileName ->
@@ -48,6 +92,7 @@ internal object BRouterRouteMetadata {
                 .sortedBy { it.first }
                 .toMap(linkedMapOf())
         }.getOrDefault(emptyMap())
+    }
 
     fun fingerprint(file: File): String = "${file.length()}:${file.lastModified()}"
 
@@ -190,4 +235,9 @@ internal object BRouterRouteMetadata {
         5, 6, 7 -> TrafficStress.VERY_HIGH
         else -> TrafficStress.UNKNOWN
     }
+
+    private const val POLL_NANOS = 100_000L
+    private val NODES_CACHE_FIELD = RoutingEngine::class.java.getDeclaredField("nodesCache").apply { isAccessible = true }
+    private val FILE_CACHE_FIELD = Class.forName("btools.mapaccess.NodesCache")
+        .getDeclaredField("fileCache").apply { isAccessible = true }
 }
