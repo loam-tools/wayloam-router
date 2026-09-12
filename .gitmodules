@@ -1,4 +1,4 @@
 [submodule "vendor/brouter"]
 	path = vendor/brouter
 	url = https://github.com/abrensch/brouter.git
-	branch = master
+

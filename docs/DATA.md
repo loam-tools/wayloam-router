@@ -7,7 +7,7 @@ WAYLOAM Router uses BRouter `.rd5` routing segments. Upstream BRouter divides ro
 The Android adapter uses app-private storage:
 
 ```text
-files/wayloam-router/
+no_backup/wayloam-router/
 ├── segments4/   .rd5 routing tiles
 ├── profiles2/   pinned BRouter profiles
 └── cache/       Loam route cache / metadata
@@ -27,7 +27,7 @@ A tile is named from its south-west corner. Examples:
 
 ## Download manager requirements
 
-The future data manager must:
+The verified data manager implements:
 
 1. resolve required/missing tiles;
 2. download into a temporary file;
@@ -46,7 +46,7 @@ The route-cache key includes a `dataVersion`. A routing-data update must not sil
 
 ## Initial coverage strategy
 
-The bootstrap envelope resolver is conservative: it returns all tiles intersecting the bounding box of supplied points. This is intentionally simple and can over-download for diagonal continent-scale routes.
+The envelope resolver is conservative and selects the shortest longitude arc across the dateline: it returns all tiles intersecting the bounding box of supplied points. This is intentionally simple and can over-download for diagonal continent-scale routes.
 
 The production strategy should be corridor-based:
 
@@ -58,8 +58,11 @@ small geographic corridor
 intersecting .rd5 tiles + safety margin
 ```
 
-After the embedded engine is connected, diagnostics should record which `.rd5` files were actually opened. That evidence can drive a tighter tile prefetch algorithm.
+Future diagnostics should record which `.rd5` files were actually opened. That evidence can drive a tighter tile prefetch algorithm.
 
 ## Data source
 
 BRouter publishes planet-wide segment files and documents building `.rd5` files from OpenStreetMap/Geofabrik data. WAYLOAM Router should keep the source configurable rather than hardcoding a single host into core routing logic.
+
+
+See [runtime integration](INTEGRATION.md) for source-version tracking, failed-refresh preservation, local checksum limitations, explicit download planning and serialization with active routing.

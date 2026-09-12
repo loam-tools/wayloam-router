@@ -10,3 +10,8 @@ out/
 benchmark-results/
 routing-data/
 *.rd5
+
+
+benchmark-artifacts/
+*.rd5
+*.route
