@@ -11,7 +11,6 @@ import tools.loam.wayloam.router.data.RoutingDataTransport
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URL
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption
 
@@ -87,7 +86,7 @@ class BRouterHttpDataSource(
         )
 
         try {
-            if (response.status == HttpURLConnection.HTTP_REQUESTED_RANGE_NOT_SATISFIABLE && resumeFrom > 0L) {
+            if (response.status == HTTP_RANGE_NOT_SATISFIABLE && resumeFrom > 0L) {
                 if (!allowRestart) {
                     throw RoutingDataHttpException(
                         request.artifact.downloadUrl,
@@ -264,6 +263,7 @@ class BRouterHttpDataSource(
             "WAYLOAM-Router/0.1 (+https://github.com/loam-tools/wayloam-router)"
 
         private const val MAX_REDIRECTS = 5
+        private const val HTTP_RANGE_NOT_SATISFIABLE = 416
         private val REDIRECT_STATUSES = setOf(301, 302, 303, 307, 308)
         private val CONTENT_RANGE_REGEX = Regex("bytes (\\d+)-(\\d+)/(\\d+|\\*)")
     }
