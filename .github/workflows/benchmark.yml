@@ -42,7 +42,7 @@ jobs:
       DATA_VERSION: ${{ inputs.data_version }}
       DOWNLOAD_LIMIT: ${{ inputs.max_download_mb }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: actions/setup-java@v6
