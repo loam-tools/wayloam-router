@@ -1,6 +1,7 @@
 package tools.loam.wayloam.router.core
 
 import tools.loam.wayloam.router.api.GeoPoint
+import tools.loam.wayloam.router.api.RoutePreferences
 import tools.loam.wayloam.router.api.RouteProfile
 import tools.loam.wayloam.router.api.RouteRequest
 import tools.loam.wayloam.router.api.RouteResult
@@ -47,10 +48,11 @@ internal fun RouteResult.snapshot() = copy(
 
 object RouteCacheKey {
     fun build(request: RouteRequest, identity: RouteIdentity): String = digest {
-        writeUTF("route-v2")
+        writeUTF("route-v3")
         writeIdentity(identity)
         writeUTF(identity.plannerVersion)
         writeUTF(request.profile.name)
+        writePreferences(request.preferences)
         writePoint(request.start)
         writeInt(request.via.size)
         request.via.forEach { writePoint(it) }
@@ -58,11 +60,22 @@ object RouteCacheKey {
         writeDouble(request.maxSectionDistanceKm)
     }
 
+    /** Compatibility overload for hosts still using only the product preset. */
+    fun section(start: GeoPoint, end: GeoPoint, profile: RouteProfile, identity: RouteIdentity): String =
+        section(start, end, profile, RoutePreferences.forProfile(profile), identity)
+
     /** Index, stage targets, total timeout and distant via points do not affect a section. */
-    fun section(start: GeoPoint, end: GeoPoint, profile: RouteProfile, identity: RouteIdentity): String = digest {
-        writeUTF("section-v2")
+    fun section(
+        start: GeoPoint,
+        end: GeoPoint,
+        profile: RouteProfile,
+        preferences: RoutePreferences,
+        identity: RouteIdentity,
+    ): String = digest {
+        writeUTF("section-v3")
         writeIdentity(identity)
         writeUTF(profile.name)
+        writePreferences(preferences)
         writePoint(start)
         writePoint(end)
     }
@@ -71,6 +84,18 @@ object RouteCacheKey {
         writeUTF(identity.engineVersion)
         writeUTF(identity.profileVersion)
         writeUTF(identity.dataVersion)
+    }
+
+    private fun DataOutputStream.writePreferences(preferences: RoutePreferences) {
+        writeBoolean(preferences.allowFerries)
+        writeBoolean(preferences.allowSteps)
+        writeBoolean(preferences.allowTunnels)
+        writeBoolean(preferences.avoidMajorRoads)
+        writeBoolean(preferences.preferCycleways)
+        writeUTF(preferences.surfacePreference.name)
+        writeUTF(preferences.trackTolerance.name)
+        writeDouble(preferences.trafficSensitivity)
+        writeDouble(preferences.hillSensitivity)
     }
 
     private fun DataOutputStream.writePoint(point: GeoPoint) {
