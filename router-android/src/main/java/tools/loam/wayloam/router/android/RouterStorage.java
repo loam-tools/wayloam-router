@@ -24,7 +24,7 @@ public final class RouterStorage {
     }
 
     public static RouterStorage create(Context context) {
-        File root = new File(context.getFilesDir(), "wayloam-router");
+        File root = new File(context.getNoBackupFilesDir(), "wayloam-router");
         File segments = new File(root, "segments4");
         File profiles = new File(root, "profiles2");
         File cache = new File(root, "cache");
@@ -59,3 +59,4 @@ public final class RouterStorage {
         }
     }
 }
+

@@ -18,8 +18,10 @@ android {
 
 dependencies {
     api(project(":router-api"))
+    api(project(":router-runtime"))
     implementation(project(":router-core"))
     implementation(project(":router-data"))
     implementation(project(":router-brouter"))
     implementation(libs.androidx.core.ktx)
 }
+

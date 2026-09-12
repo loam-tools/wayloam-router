@@ -5,6 +5,10 @@ import btools.mapcreator.PosUnifier
 import btools.mapcreator.WayLinker
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
+import tools.loam.wayloam.router.api.RouteRequest
+import tools.loam.wayloam.router.runtime.EmbeddedWayloamRouter
+import tools.loam.wayloam.router.runtime.LocalRouterConfig
 import org.junit.Test
 import tools.loam.wayloam.router.api.GeoPoint
 import tools.loam.wayloam.router.api.RouteProfile
@@ -62,6 +66,22 @@ class LocalBRouterSmokeTest {
                         preset = WayloamProfiles.forProfile(RouteProfile.TOURING),
                     )
                 )
+            }
+
+            runBlocking {
+                // Route all shipped presets through the public runtime, with bundled profile
+                // installation and real graph matching, then reopen from disk with a new facade.
+                val resolver = BRouterGraphAnchorResolver(segments, profileDir)
+                assertTrue(resolver.candidates(endpoints.first, RouteProfile.TOURING).isNotEmpty())
+                for (profile in RouteProfile.entries) {
+                    val config = LocalRouterConfig(working, "pinned-dreieich-fixture", 30_000)
+                    val request = RouteRequest(endpoints.first, endpoints.second, profile)
+                    val cold = EmbeddedWayloamRouter.create(config).route(request) {}
+                    val warm = EmbeddedWayloamRouter.create(config).route(request) {}
+                    assertTrue(cold.metrics.distanceMeters > 0)
+                    assertTrue("Reopened runtime must hit disk cache", warm.cacheHit)
+                    assertEquals(cold.points, warm.points)
+                }
             }
 
             assertTrue("Embedded route should contain geometry", result.points.size >= 2)
@@ -250,3 +270,4 @@ class LocalBRouterSmokeTest {
         )
     }
 }
+

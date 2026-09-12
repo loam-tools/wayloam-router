@@ -20,6 +20,7 @@ class LongRouteCoordinatorTest {
         val engine = FakeSectionEngine()
         val coordinator = LongRouteCoordinator(
             sectionEngine = engine,
+            sectionPlanner = FixedDistanceSectionPlanner(),
             cache = cache,
             profileVersion = "test-profile-1",
             dataVersion = "test-data-1",
@@ -41,7 +42,7 @@ class LongRouteCoordinatorTest {
         assertFalse(first.cacheHit)
         assertTrue(second.cacheHit)
         assertEquals(callsAfterFirst, engine.calls)
-        assertTrue(events.first() is RoutingEvent.Started)
+        assertTrue(events.first() is RoutingEvent.Preparing)
         assertTrue(events.last() is RoutingEvent.Completed)
         assertEquals(first.points.first(), request.start)
         assertEquals(first.points.last(), request.end)
@@ -74,3 +75,4 @@ class LongRouteCoordinatorTest {
         }
     }
 }
+

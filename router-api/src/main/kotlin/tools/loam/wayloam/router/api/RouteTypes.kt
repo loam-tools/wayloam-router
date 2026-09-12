@@ -8,6 +8,7 @@ data class GeoPoint(
     init {
         require(latitude in -90.0..90.0) { "Latitude must be between -90 and 90" }
         require(longitude in -180.0..180.0) { "Longitude must be between -180 and 180" }
+        require(elevationMeters == null || elevationMeters.isFinite()) { "Elevation must be finite" }
     }
 }
 
@@ -23,9 +24,14 @@ data class RouteRequest(
     val profile: RouteProfile,
     val via: List<GeoPoint> = emptyList(),
     val maxSectionDistanceKm: Double = 220.0,
+    val timeoutMillis: Long = 600_000L,
 ) {
     init {
-        require(maxSectionDistanceKm >= 20.0) { "Section distance must be at least 20 km" }
+        require(maxSectionDistanceKm.isFinite() && maxSectionDistanceKm >= 20.0) {
+            "Section distance must be finite and at least 20 km"
+        }
+        require(timeoutMillis > 0L) { "Routing timeout must be positive" }
+        require(via.size <= 256) { "A route supports at most 256 via points" }
     }
 }
 
@@ -74,6 +80,7 @@ data class RouteResult(
     val segments: List<RouteSegment>,
     val engine: String,
     val cacheHit: Boolean = false,
+    val diagnostics: RouteDiagnostics = RouteDiagnostics(),
 ) {
     init {
         require(points.size >= 2) { "A route must contain at least two points" }
@@ -82,6 +89,7 @@ data class RouteResult(
 }
 
 sealed interface RoutingEvent {
+    data object Preparing : RoutingEvent
     data class Started(val sectionCount: Int) : RoutingEvent
     data class SectionStarted(val index: Int, val total: Int) : RoutingEvent
     data class SectionCompleted(
@@ -90,6 +98,10 @@ sealed interface RoutingEvent {
         val distanceMeters: Long,
     ) : RoutingEvent
     data class CacheHit(val key: String) : RoutingEvent
+    data class SectionCacheHit(val index: Int) : RoutingEvent
+    data class AnchorSkipped(val index: Int) : RoutingEvent
+    data class SectionRetry(val index: Int, val attempt: Int, val reason: RoutingFailureCode) : RoutingEvent
+    data class SectionReady(val segment: RouteSegment) : RoutingEvent
     data class Completed(val distanceMeters: Long, val sectionCount: Int) : RoutingEvent
 }
 

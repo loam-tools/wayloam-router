@@ -13,10 +13,14 @@ data class SectionSpec(
     val index: Int,
     val start: GeoPoint,
     val end: GeoPoint,
+    val endIsUserWaypoint: Boolean = true,
+    val endCandidates: List<GeoPoint> = listOf(end),
 )
 
 fun interface SectionPlanner {
-    fun plan(request: RouteRequest): List<SectionSpec>
+    suspend fun plan(request: RouteRequest): List<SectionSpec>
+
+    val version: String get() = javaClass.name
 }
 
 /**
@@ -27,7 +31,9 @@ fun interface SectionPlanner {
  * intermediate anchors will be replaced by graph-aware/snap-aware anchors.
  */
 class FixedDistanceSectionPlanner : SectionPlanner {
-    override fun plan(request: RouteRequest): List<SectionSpec> {
+    override val version: String = "geometric-2"
+
+    override suspend fun plan(request: RouteRequest): List<SectionSpec> {
         val requestedAnchors = buildList {
             add(request.start)
             addAll(request.via)
@@ -44,6 +50,7 @@ class FixedDistanceSectionPlanner : SectionPlanner {
             val sectionCount = ceil(distanceKm / request.maxSectionDistanceKm)
                 .toInt()
                 .coerceAtLeast(1)
+            require(expanded.size + sectionCount <= 4096) { "Route requires too many sections" }
 
             for (section in 1 until sectionCount) {
                 expanded += GeoMath.interpolateGreatCircle(
@@ -56,7 +63,8 @@ class FixedDistanceSectionPlanner : SectionPlanner {
         }
 
         return expanded.windowed(2).mapIndexed { index, pair ->
-            SectionSpec(index = index, start = pair[0], end = pair[1])
+            SectionSpec(index = index, start = pair[0], end = pair[1],
+                endIsUserWaypoint = pair[1] in requestedAnchors)
         }
     }
 }
@@ -71,7 +79,8 @@ object GeoMath {
         val deltaLon = (b.longitude - a.longitude).toRadians()
         val hav = sin(deltaLat / 2) * sin(deltaLat / 2) +
             cos(lat1) * cos(lat2) * sin(deltaLon / 2) * sin(deltaLon / 2)
-        val angle = 2 * atan2(sqrt(hav), sqrt((1 - hav).coerceAtLeast(0.0)))
+        val bounded = hav.coerceIn(0.0, 1.0)
+        val angle = 2 * atan2(sqrt(bounded), sqrt(1 - bounded))
         return EARTH_RADIUS_METERS * angle
     }
 
@@ -87,6 +96,7 @@ object GeoMath {
         val angularDistance = distanceMeters(start, end) / EARTH_RADIUS_METERS
         if (angularDistance < 1e-12) return start
 
+        require(angularDistance < PI - 1e-7) { "Antipodal endpoints require an explicit via point" }
         val sinDistance = sin(angularDistance)
         val a = sin((1 - fraction) * angularDistance) / sinDistance
         val b = sin(fraction * angularDistance) / sinDistance
@@ -104,3 +114,4 @@ object GeoMath {
     private fun Double.toRadians(): Double = this * PI / 180.0
     private fun Double.toDegrees(): Double = this * 180.0 / PI
 }
+
