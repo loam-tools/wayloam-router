@@ -23,6 +23,10 @@ sourceSets {
     }
 }
 
+tasks.withType<Test>().configureEach {
+    systemProperty("wayloam.repoRoot", rootProject.projectDir.absolutePath)
+}
+
 dependencies {
     api(project(":router-api"))
     implementation(project(":router-core"))
