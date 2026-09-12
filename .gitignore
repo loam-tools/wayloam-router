@@ -1,0 +1,12 @@
+.gradle/
+build/
+**/build/
+.idea/
+*.iml
+local.properties
+.DS_Store
+out/
+*.log
+benchmark-results/
+routing-data/
+*.rd5

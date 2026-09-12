@@ -1,0 +1,44 @@
+name: Router Benchmarks
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalogue:
+    name: Benchmark catalogue
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 36 SDK
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Write benchmark catalogue
+        run: gradle :router-benchmark:run --quiet | tee benchmark-catalogue.txt
+
+      - name: Upload catalogue
+        uses: actions/upload-artifact@v4
+        with:
+          name: wayloam-router-benchmark-catalogue
+          path: benchmark-catalogue.txt
+          retention-days: 30
