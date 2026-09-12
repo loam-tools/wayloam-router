@@ -60,9 +60,9 @@ jobs:
           retention-days: 14
 
   android:
-    name: Android adapter build
+    name: Android reliability tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,6 +72,38 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v4
-      - run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Install Android API 36 emulator
+        run: |
+          sdkmanager "platform-tools" "emulator" "platforms;android-36" "build-tools;36.0.0" \
+            "system-images;android-36;google_apis;x86_64"
+          echo no | avdmanager create avd --force --name wayloam-ci \
+            --package "system-images;android-36;google_apis;x86_64"
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :router-android:assembleDebug --stacktrace
+      - name: Boot emulator
+        shell: bash
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+          nohup emulator -avd wayloam-ci -no-window -noaudio -no-boot-anim \
+            -gpu swiftshader_indirect -no-snapshot -wipe-data > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          adb wait-for-device
+          for i in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/emulator.log"
+          exit 1
+      - name: Run Android instrumentation suite
+        run: ./gradlew :router-android:connectedDebugAndroidTest --stacktrace
+      - name: Collect emulator log
+        if: failure()
+        run: cat "$RUNNER_TEMP/emulator.log" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: router-android-test-reports
+          path: |
+            router-android/build/reports/androidTests/**
+            router-android/build/outputs/androidTest-results/**
+          retention-days: 14
