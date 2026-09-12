@@ -148,8 +148,18 @@ class FileRouteCache(
         }
     }
 
+    /** Explicit cache clear also removes stale/corrupt route artifacts and interrupted temp files. */
     @Synchronized fun clear() {
-        entries().forEach(::discard)
+        if (!Files.isDirectory(directory)) return
+        Files.list(directory).use { stream ->
+            stream.iterator().asSequence()
+                .filter(Files::isRegularFile)
+                .filter { path ->
+                    val name = path.fileName.toString()
+                    name.endsWith(".route") || (name.startsWith("route-") && name.endsWith(".tmp"))
+                }
+                .forEach(::discard)
+        }
     }
 
     @Synchronized fun sizeBytes(): Long = entries().sumOf { runCatching { Files.size(it) }.getOrDefault(0L) }
