@@ -91,7 +91,7 @@ class EmbeddedWayloamRouter private constructor(
     private fun dataDependencyFingerprint(fileName: String): String? {
         if (!RD5_FILE.matches(fileName)) return null
         val file = File(segmentsDirectory, fileName)
-        return if (file.isFile) BRouterRouteMetadata.fingerprint(file) else null
+        return if (file.isFile) "${file.length()}:${file.lastModified()}" else null
     }
 
     companion object {
