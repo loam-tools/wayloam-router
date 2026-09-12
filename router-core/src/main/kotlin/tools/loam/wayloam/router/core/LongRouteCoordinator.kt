@@ -11,6 +11,8 @@ class LongRouteCoordinator(
     private val cache: RouteCache = NoRouteCache,
     private val profileVersion: String = sectionEngine.engineVersion,
     private val dataVersion: String = "unknown",
+    /** Returns the current fingerprint for an engine data dependency file name. */
+    private val dataDependencyFingerprint: ((String) -> String?)? = null,
 ) : WayloamRouter {
     private val calculation = Mutex()
 
@@ -29,18 +31,22 @@ class LongRouteCoordinator(
             "${sectionEngine.engineId}:${sectionEngine.engineVersion}",
             profileVersion, dataVersion, sectionPlanner.version,
         )
+        var staleCacheEntries = 0
         val key = RouteCacheKey.build(request, identity)
-        cache.get(key)?.let { cached ->
+        val routeCached = cache.get(key)
+        if (routeCached != null && cacheIsCurrent(routeCached)) {
             currentCoroutineContext().ensureActive()
             onEvent(RoutingEvent.CacheHit(key))
-            onEvent(RoutingEvent.Completed(cached.metrics.distanceMeters, cached.segments.size))
-            return cached.copy(cacheHit = true, diagnostics = RouteDiagnostics(
+            onEvent(RoutingEvent.Completed(routeCached.metrics.distanceMeters, routeCached.segments.size))
+            return routeCached.copy(cacheHit = true, diagnostics = RouteDiagnostics(
                 elapsedMillis = elapsed(),
                 plannerVersion = sectionPlanner.version,
                 engineVersion = identity.engineVersion,
                 profileVersion = identity.profileVersion,
                 dataVersion = identity.dataVersion,
             ))
+        } else if (routeCached != null) {
+            staleCacheEntries++
         }
 
         onEvent(RoutingEvent.Preparing)
@@ -76,8 +82,10 @@ class LongRouteCoordinator(
                     start, end, request.profile, request.preferences, identity,
                 )
                 try {
-                    val cached = cache.get(sectionKey)
-                    val current = if (cached != null && cached.segments.size == 1) {
+                    val cachedCandidate = cache.get(sectionKey)
+                    val cached = cachedCandidate?.takeIf { it.segments.size == 1 && cacheIsCurrent(it) }
+                    if (cachedCandidate != null && cached == null) staleCacheEntries++
+                    val current = if (cached != null) {
                         cacheHits++
                         onEvent(RoutingEvent.SectionCacheHit(spec.index))
                         cached.segments.single().copy(index = routed.size)
@@ -129,11 +137,19 @@ class LongRouteCoordinator(
                 engineVersion = identity.engineVersion,
                 profileVersion = identity.profileVersion,
                 dataVersion = identity.dataVersion,
+                staleCacheEntries = staleCacheEntries,
             ))
         currentCoroutineContext().ensureActive()
         cache.put(key, result)
         onEvent(RoutingEvent.Completed(result.metrics.distanceMeters, result.segments.size))
         return result
+    }
+
+    private fun cacheIsCurrent(result: RouteResult): Boolean {
+        val fingerprint = dataDependencyFingerprint ?: return true
+        val dependencies = result.dataDependencies
+        if (dependencies.isEmpty()) return false
+        return dependencies.all { (name, expected) -> fingerprint(name) == expected }
     }
 
     companion object {
