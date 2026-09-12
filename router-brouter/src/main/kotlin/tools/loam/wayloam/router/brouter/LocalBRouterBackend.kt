@@ -75,8 +75,9 @@ class LocalBRouterBackend(
             ) {
                 val result = runCatching {
                     engine.doRun(maxRunningTimeMillis)
-                    engine.errorMessage?.let { throw classifyBRouterFailure(it) }
-                    val track = engine.foundTrack ?: throw NoRouteException("BRouter returned no route")
+                    engine.getErrorMessage()?.let { throw classifyBRouterFailure(it) }
+                    val track = engine.getFoundTrack()
+                        ?: throw NoRouteException("BRouter returned no route")
                     track.toBackendResult()
                 }
 
@@ -97,9 +98,9 @@ class LocalBRouterBackend(
 
         val points = nodes.map { node ->
             GeoPoint(
-                latitude = (node.iLat - LATITUDE_OFFSET) / POSITION_SCALE,
-                longitude = (node.iLon - LONGITUDE_OFFSET) / POSITION_SCALE,
-                elevationMeters = node.sElev
+                latitude = (node.getILat() - LATITUDE_OFFSET) / POSITION_SCALE,
+                longitude = (node.getILon() - LONGITUDE_OFFSET) / POSITION_SCALE,
+                elevationMeters = node.getSElev()
                     .takeUnless { it == Short.MIN_VALUE }
                     ?.let { it / 4.0 },
             )
@@ -119,7 +120,7 @@ class LocalBRouterBackend(
                 distanceMeters = distance.toLong(),
                 ascentMeters = max(0, ascend),
                 descentMeters = max(0, ascend - netElevation),
-                durationSeconds = max(0, totalSeconds).toLong(),
+                durationSeconds = max(0, getTotalSeconds()).toLong(),
             ),
         )
     }
