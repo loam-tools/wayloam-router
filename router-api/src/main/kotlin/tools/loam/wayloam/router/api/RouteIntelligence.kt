@@ -1,11 +1,42 @@
 package tools.loam.wayloam.router.api
 
 enum class SurfaceType {
-    UNKNOWN, ASPHALT, CONCRETE, PAVING_STONES, COMPACTED, FINE_GRAVEL, GRAVEL, DIRT, SAND, TRAIL,
+    UNKNOWN,
+    PAVED,
+    ASPHALT,
+    CONCRETE,
+    PAVING_STONES,
+    SETT,
+    COBBLESTONE,
+    COMPACTED,
+    FINE_GRAVEL,
+    GRAVEL,
+    GROUND,
+    DIRT,
+    MUD,
+    SAND,
+    GRASS,
+    WOOD,
+    TRAIL,
 }
 
 enum class RoadClass {
-    UNKNOWN, CYCLEWAY, PATH, TRACK, RESIDENTIAL, SERVICE, TERTIARY, SECONDARY, PRIMARY, TRUNK,
+    UNKNOWN,
+    CYCLEWAY,
+    PATH,
+    TRACK,
+    FOOTWAY,
+    BRIDLEWAY,
+    PEDESTRIAN,
+    RESIDENTIAL,
+    LIVING_STREET,
+    SERVICE,
+    UNCLASSIFIED,
+    TERTIARY,
+    SECONDARY,
+    PRIMARY,
+    TRUNK,
+    MOTORWAY,
 }
 
 enum class CyclewayType {
@@ -38,6 +69,7 @@ data class RouteAnnotation(
     val steps: Boolean? = null,
     val unpaved: Boolean? = null,
     val limitedAccess: Boolean? = null,
+    val bikeCarryLikely: Boolean? = null,
 ) {
     init {
         require(startDistanceMeters >= 0.0 && startDistanceMeters.isFinite())
@@ -92,7 +124,28 @@ data class RouteSurfaceSummary(
     val knownDistanceMeters: Double,
     val unknownDistanceMeters: Double,
     val distanceBySurfaceMeters: Map<SurfaceType, Double>,
-)
+) {
+    val pavedDistanceMeters: Double
+        get() = distanceBySurfaceMeters
+            .filterKeys { it in PAVED_SURFACES }
+            .values.sum()
+
+    val unpavedDistanceMeters: Double
+        get() = distanceBySurfaceMeters
+            .filterKeys { it != SurfaceType.UNKNOWN && it !in PAVED_SURFACES }
+            .values.sum()
+
+    companion object {
+        val PAVED_SURFACES = setOf(
+            SurfaceType.PAVED,
+            SurfaceType.ASPHALT,
+            SurfaceType.CONCRETE,
+            SurfaceType.PAVING_STONES,
+            SurfaceType.SETT,
+            SurfaceType.COBBLESTONE,
+        )
+    }
+}
 
 data class RouteAnalysis(
     val annotations: List<RouteAnnotation> = emptyList(),
