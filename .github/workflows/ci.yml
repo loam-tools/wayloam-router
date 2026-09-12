@@ -27,7 +27,7 @@ jobs:
           java-version: '17'
       - name: Verify pinned BRouter baseline
         run: test "$(git -C vendor/brouter rev-parse HEAD)" = "4d2639af77ea5ed9c30d3e400764eb6f9e8522da"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Test all JVM modules and package the runnable CLI
         run: ./gradlew -PincludeAndroid=false test :router-benchmark:installDist --stacktrace
       - name: Verify benchmark catalogue
@@ -73,5 +73,5 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - run: ./gradlew :router-android:assembleDebug --stacktrace
