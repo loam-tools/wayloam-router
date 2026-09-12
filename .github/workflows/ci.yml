@@ -1,0 +1,56 @@
+name: Router CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: router-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test router modules
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 36 SDK
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Unit tests
+        run: >-
+          gradle
+          :router-api:test
+          :router-core:test
+          :router-data:test
+          :router-brouter:test
+          :router-benchmark:test
+          --stacktrace
+
+      - name: Build Android adapter
+        run: gradle :router-android:assembleDebug --stacktrace
+
+      - name: Verify benchmark catalogue
+        run: gradle :router-benchmark:run --stacktrace
