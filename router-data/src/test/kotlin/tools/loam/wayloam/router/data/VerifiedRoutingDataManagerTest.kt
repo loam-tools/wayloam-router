@@ -41,6 +41,53 @@ class VerifiedRoutingDataManagerTest {
     }
 
     @Test
+    fun changedRemoteVersionRedownloadsEvenWhenByteSizeIsUnchanged() = runBlocking {
+        val root = Files.createTempDirectory("wayloam-data-version-test")
+        val v1 = "route-data-v1".toByteArray()
+        val v2 = "route-data-v2".toByteArray()
+        var currentVersion = "etag:v1"
+        var currentBytes = v1
+        var calls = 0
+        val manifest = RoutingDataManifest {
+            Rd5RemoteArtifact(
+                tile = tile,
+                sourceId = "fixture",
+                sourceVersion = currentVersion,
+                downloadUrl = "https://example.invalid/${tile.fileName}",
+                sizeBytes = currentBytes.size.toLong(),
+                sha256 = null,
+            )
+        }
+        val manager = VerifiedRoutingDataManager(
+            segmentsRoot = root,
+            manifest = manifest,
+            transport = RoutingDataTransport { request ->
+                calls++
+                Files.createDirectories(request.destination.parent)
+                Files.write(request.destination, currentBytes)
+                RoutingDataDownloadResult(currentBytes.size.toLong(), resumed = false)
+            },
+        )
+
+        try {
+            manager.ensureTile(tile)
+            assertArrayEquals(v1, Files.readAllBytes(root.resolve(tile.fileName)))
+
+            currentVersion = "etag:v2"
+            currentBytes = v2
+            val refreshed = manager.ensureTile(tile)
+
+            assertTrue(refreshed.downloaded)
+            assertEquals(2, calls)
+            assertArrayEquals(v2, Files.readAllBytes(root.resolve(tile.fileName)))
+            assertEquals("etag:v2", refreshed.sourceVersion)
+            assertEquals(RoutingTileState.INSTALLED_VERIFIED, manager.status(tile).state)
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun checksumMismatchNeverBecomesInstalled() = runBlocking {
         val root = Files.createTempDirectory("wayloam-data-test")
         val expected = "correct".toByteArray()
