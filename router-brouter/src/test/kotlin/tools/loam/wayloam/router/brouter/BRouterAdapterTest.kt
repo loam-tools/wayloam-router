@@ -15,9 +15,20 @@ class BRouterAdapterTest {
         assertEquals("fastbike", WayloamProfiles.DIRECT.baseProfile)
         assertEquals("trekking", WayloamProfiles.TOURING.baseProfile)
         assertEquals("trekking", WayloamProfiles.BIKEPACKING.baseProfile)
-        assertEquals("false", WayloamProfiles.BIKEPACKING.parameters["allow_steps"])
-        assertEquals("true", WayloamProfiles.BIKEPACKING.parameters["avoid_unsafe"])
+        assertEquals("0", WayloamProfiles.BIKEPACKING.parameters["allow_steps"])
+        assertEquals("1", WayloamProfiles.BIKEPACKING.parameters["avoid_unsafe"])
         assertTrue(WayloamProfiles.BIKEPACKING.versionKey.startsWith(BRouterBaseline.RELEASE))
+
+        listOf(
+            WayloamProfiles.DIRECT,
+            WayloamProfiles.TOURING,
+            WayloamProfiles.BIKEPACKING,
+        ).forEach { preset ->
+            assertTrue(
+                "BRouter override values must remain numeric: ${preset.parameters}",
+                preset.parameters.values.all { it.toDoubleOrNull() != null },
+            )
+        }
     }
 
     @Test
