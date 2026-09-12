@@ -82,12 +82,17 @@ class ExactRouteRerouter(
             val edge = GeoMath.distanceMeters(start, end)
             if (travelled + edge >= distanceMeters && edge > 0.0) {
                 val fraction = ((distanceMeters - travelled) / edge).coerceIn(0.0, 1.0)
+                val startElevation = start.elevationMeters
+                val endElevation = end.elevationMeters
+                val elevation = if (startElevation != null && endElevation != null) {
+                    startElevation + (endElevation - startElevation) * fraction
+                } else {
+                    startElevation ?: endElevation
+                }
                 return GeoPoint(
                     latitude = start.latitude + (end.latitude - start.latitude) * fraction,
                     longitude = interpolateLongitude(start.longitude, end.longitude, fraction),
-                    elevationMeters = if (start.elevationMeters != null && end.elevationMeters != null)
-                        start.elevationMeters + (end.elevationMeters - start.elevationMeters) * fraction
-                    else start.elevationMeters ?: end.elevationMeters,
+                    elevationMeters = elevation,
                 )
             }
             travelled += edge
