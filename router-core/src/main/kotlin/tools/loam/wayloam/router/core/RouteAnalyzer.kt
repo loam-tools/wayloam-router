@@ -96,29 +96,32 @@ object RouteAnalyzer {
 
     private fun annotationWarnings(annotation: RouteAnnotation): List<RouteWarning> = buildList {
         val lengthText = distanceText(annotation.lengthMeters)
-        val rough = annotation.surface in setOf(
-            SurfaceType.GRAVEL, SurfaceType.DIRT, SurfaceType.SAND, SurfaceType.TRAIL,
-        ) || annotation.smoothness in setOf(
-            Smoothness.BAD, Smoothness.VERY_BAD, Smoothness.HORRIBLE,
-            Smoothness.VERY_HORRIBLE, Smoothness.IMPASSABLE,
-        ) || annotation.trackType in setOf(TrackType.GRADE4, TrackType.GRADE5)
+        val rough = annotation.unpaved == true && (
+            annotation.surface in setOf(
+                SurfaceType.GRAVEL, SurfaceType.GROUND, SurfaceType.DIRT, SurfaceType.MUD,
+                SurfaceType.SAND, SurfaceType.GRASS, SurfaceType.TRAIL,
+            ) || annotation.smoothness in setOf(
+                Smoothness.BAD, Smoothness.VERY_BAD, Smoothness.HORRIBLE,
+                Smoothness.VERY_HORRIBLE, Smoothness.IMPASSABLE,
+            ) || annotation.trackType in setOf(TrackType.GRADE4, TrackType.GRADE5)
+        )
         if (rough) add(annotation.warning(
             RouteWarningType.ROUGH_SURFACE,
             RouteWarningSeverity.CAUTION,
-            "$lengthText rough surface",
+            "$lengthText rough gravel/trail surface",
         ))
         if (annotation.ferry == true) add(annotation.warning(
             RouteWarningType.FERRY, RouteWarningSeverity.INFO, "$lengthText ferry crossing",
         ))
-        if (annotation.steps == true || annotation.smoothness == Smoothness.IMPASSABLE) add(annotation.warning(
+        if (annotation.bikeCarryLikely == true) add(annotation.warning(
             RouteWarningType.BIKE_CARRY, RouteWarningSeverity.HARD, "Bike carrying may be required",
         ))
         if (annotation.trafficStress in setOf(TrafficStress.HIGH, TrafficStress.VERY_HIGH) ||
-            annotation.roadClass in setOf(RoadClass.PRIMARY, RoadClass.TRUNK)) add(annotation.warning(
+            annotation.roadClass in setOf(RoadClass.PRIMARY, RoadClass.TRUNK, RoadClass.MOTORWAY)) add(annotation.warning(
             RouteWarningType.BUSY_ROAD, RouteWarningSeverity.CAUTION, "$lengthText higher-traffic road",
         ))
         if (annotation.limitedAccess == true) add(annotation.warning(
-            RouteWarningType.LIMITED_ACCESS, RouteWarningSeverity.HARD, "Limited-access crossing",
+            RouteWarningType.LIMITED_ACCESS, RouteWarningSeverity.HARD, "Limited-access cycling section",
         ))
     }
 
