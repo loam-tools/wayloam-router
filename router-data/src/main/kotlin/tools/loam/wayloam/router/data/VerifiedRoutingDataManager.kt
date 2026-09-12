@@ -69,7 +69,13 @@ class VerifiedRoutingDataManager(
 
         if (Files.isRegularFile(finalPath)) {
             val verification = verify(finalPath, artifact)
-            if (verification.valid) {
+            val metadata = readMetadata(tile)
+            val provenanceMatches = metadata != null &&
+                metadata.sourceId == artifact.sourceId &&
+                metadata.sourceVersion == artifact.sourceVersion
+            val contentHashPinsArtifact = artifact.normalizedSha256 != null && verification.valid
+
+            if (verification.valid && (provenanceMatches || contentHashPinsArtifact)) {
                 ensureMetadata(installedPath = finalPath, artifact = artifact, verification = verification)
                 return result(
                     artifact = artifact,
@@ -79,6 +85,9 @@ class VerifiedRoutingDataManager(
                     verification = verification,
                 )
             }
+
+            // A valid-looking file with stale or unknown provenance must not be relabelled as current.
+            // Redownload it through the same staging path so remote version changes are real refreshes.
             Files.deleteIfExists(finalPath)
             Files.deleteIfExists(metadataPath(tile))
         }
