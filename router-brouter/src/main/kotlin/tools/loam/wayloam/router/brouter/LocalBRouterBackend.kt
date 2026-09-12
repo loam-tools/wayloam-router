@@ -86,7 +86,7 @@ class LocalBRouterBackend(
                         engine.doRun(maxRunningTimeMillis)
                         engine.getErrorMessage()?.let { throw classifyBRouterFailure(it) }
                         val track = engine.getFoundTrack() ?: throw NoRouteException("BRouter returned no route")
-                        track.toBackendResult()
+                        track.toBackendResult(engine)
                     }
                     if (continuation.isActive) continuation.resumeWith(result)
                 }
@@ -102,7 +102,7 @@ class LocalBRouterBackend(
             }
         }
 
-    private fun OsmTrack.toBackendResult(): BRouterBackendResult {
+    private fun OsmTrack.toBackendResult(engine: RoutingEngine): BRouterBackendResult {
         if (nodes.size < 2) throw NoRouteException("BRouter returned an empty route")
 
         val points = nodes.map { node ->
@@ -131,6 +131,8 @@ class LocalBRouterBackend(
                 descentMeters = max(0, ascend - netElevation),
                 durationSeconds = max(0, getTotalSeconds()).toLong(),
             ),
+            annotations = BRouterRouteMetadata.annotations(this),
+            dataDependencies = BRouterRouteMetadata.dataDependencies(engine, segmentDirectory),
         )
     }
 
@@ -145,4 +147,3 @@ class LocalBRouterBackend(
         private const val LATITUDE_OFFSET = 90_000_000
     }
 }
-
