@@ -70,7 +70,7 @@ class VerifiedRoutingDataManager(
         if (Files.isRegularFile(finalPath)) {
             val verification = verify(finalPath, artifact)
             if (verification.valid) {
-                ensureMetadata(finalPath, artifact, verification)
+                ensureMetadata(installedPath = finalPath, artifact = artifact, verification = verification)
                 return result(
                     artifact = artifact,
                     path = finalPath,
@@ -84,9 +84,7 @@ class VerifiedRoutingDataManager(
         }
 
         val stagingPath = stagingPath(tile)
-        val resumeFrom = Files.takeIf { Files.isRegularFile(stagingPath) }
-            ?.size(stagingPath)
-            ?: 0L
+        val resumeFrom = if (Files.isRegularFile(stagingPath)) Files.size(stagingPath) else 0L
 
         val response = transport.download(
             RoutingDataDownloadRequest(
