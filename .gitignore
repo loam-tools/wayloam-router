@@ -15,3 +15,5 @@ routing-data/
 benchmark-artifacts/
 *.rd5
 *.route
+
+.kotlin/
