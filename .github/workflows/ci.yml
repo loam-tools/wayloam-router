@@ -61,8 +61,10 @@ jobs:
 
   android:
     name: Android reliability tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Ubuntu 24.04 hosted runners have had recurring emulator/AVD hangs. 26.04 also
+    # ships Android command-line tools new enough for current Major.Minor packages.
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,34 +73,28 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v4
-      - name: Install Android API 36 emulator
-        run: |
-          sdkmanager "platform-tools" "emulator" "platforms;android-36" "build-tools;36.0.0" \
-            "system-images;android-36;google_apis;x86_64"
-          echo no | avdmanager create avd --force --name wayloam-ci \
-            --package "system-images;android-36;google_apis;x86_64"
       - uses: gradle/actions/setup-gradle@v4
-      - name: Boot emulator
+
+      - name: Enable KVM access
         shell: bash
         run: |
-          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-          nohup emulator -avd wayloam-ci -no-window -noaudio -no-boot-anim \
-            -gpu swiftshader_indirect -no-snapshot -wipe-data > "$RUNNER_TEMP/emulator.log" 2>&1 &
-          adb wait-for-device
-          for i in $(seq 1 120); do
-            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; then
-              exit 0
-            fi
-            sleep 2
-          done
-          cat "$RUNNER_TEMP/emulator.log"
-          exit 1
-      - name: Run Android instrumentation suite
-        run: ./gradlew :router-android:connectedDebugAndroidTest --stacktrace
-      - name: Collect emulator log
-        if: failure()
-        run: cat "$RUNNER_TEMP/emulator.log" || true
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+          fi
+
+      - name: Run API 36 instrumentation suite
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          cores: 2
+          ram-size: 2048M
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: ./gradlew :router-android:connectedDebugAndroidTest --stacktrace
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
