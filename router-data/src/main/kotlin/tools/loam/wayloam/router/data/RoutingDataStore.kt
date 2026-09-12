@@ -25,12 +25,11 @@ class FileRoutingDataStore(
     override fun installedTiles(): Set<Rd5TileId> {
         if (!Files.isDirectory(root)) return emptySet()
         return Files.list(root).use { stream ->
-            stream
+            stream.iterator().asSequence()
                 .filter(Files::isRegularFile)
                 .map { it.fileName.toString() }
                 .filter { it.endsWith(".rd5") }
                 .mapNotNull(::parseFileName)
-                .toList()
                 .toSet()
         }
     }
