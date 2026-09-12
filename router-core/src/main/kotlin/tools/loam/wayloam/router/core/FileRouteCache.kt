@@ -57,7 +57,23 @@ class FileRouteCache(
                     val points = input.readInt()
                     if (points < 2 || points > remainingPoints) throw IOException("Invalid point count")
                     remainingPoints -= points
-                    RouteSegment(i, start, end, List(points) { input.readPoint() }, metrics, label)
+                    val geometry = List(points) { input.readPoint() }
+                    val annotationCount = input.readInt()
+                    if (annotationCount !in 0..MAX_ANNOTATIONS_PER_SEGMENT) throw IOException("Invalid annotation count")
+                    val annotations = List(annotationCount) { input.readAnnotation() }
+                    val dependencyCount = input.readInt()
+                    if (dependencyCount !in 0..MAX_DEPENDENCIES_PER_SEGMENT) throw IOException("Invalid dependency count")
+                    val dependencies = buildMap {
+                        repeat(dependencyCount) {
+                            val name = input.readUTF()
+                            val fingerprint = input.readUTF()
+                            if (name.isBlank() || '/' in name || '\\' in name || fingerprint.isBlank()) {
+                                throw IOException("Invalid cache dependency")
+                            }
+                            put(name, fingerprint)
+                        }
+                    }
+                    RouteSegment(i, start, end, geometry, metrics, label, annotations, dependencies)
                 }
                 if (input.read() != -1) throw IOException("Trailing cache data")
                 RouteStitcher.stitch(segments, engine)
@@ -100,6 +116,15 @@ class FileRouteCache(
                     output.writeUTF(segment.engine)
                     output.writeInt(segment.points.size)
                     segment.points.forEach { output.writePoint(it) }
+                    if (segment.annotations.size > MAX_ANNOTATIONS_PER_SEGMENT) throw IOException("Too many annotations")
+                    output.writeInt(segment.annotations.size)
+                    segment.annotations.forEach { output.writeAnnotation(it) }
+                    if (segment.dataDependencies.size > MAX_DEPENDENCIES_PER_SEGMENT) throw IOException("Too many dependencies")
+                    output.writeInt(segment.dataDependencies.size)
+                    segment.dataDependencies.toSortedMap().forEach { (name, fingerprint) ->
+                        output.writeUTF(name)
+                        output.writeUTF(fingerprint)
+                    }
                 }
             }
             val payload = bytes.toByteArray()
@@ -162,8 +187,61 @@ class FileRouteCache(
 
     private fun DataInputStream.readPoint() = GeoPoint(readDouble(), readDouble(), if (readBoolean()) readDouble() else null)
 
+    private fun DataOutputStream.writeAnnotation(annotation: RouteAnnotation) {
+        writeDouble(annotation.startDistanceMeters)
+        writeDouble(annotation.endDistanceMeters)
+        writeInt(annotation.surface.ordinal)
+        writeInt(annotation.roadClass.ordinal)
+        writeInt(annotation.cycleway.ordinal)
+        writeInt(annotation.trackType.ordinal)
+        writeInt(annotation.smoothness.ordinal)
+        writeInt(annotation.trafficStress.ordinal)
+        writeNullableBoolean(annotation.ferry)
+        writeNullableBoolean(annotation.tunnel)
+        writeNullableBoolean(annotation.steps)
+        writeNullableBoolean(annotation.unpaved)
+        writeNullableBoolean(annotation.limitedAccess)
+        writeNullableBoolean(annotation.bikeCarryLikely)
+    }
+
+    private fun DataInputStream.readAnnotation() = RouteAnnotation(
+        startDistanceMeters = readDouble(),
+        endDistanceMeters = readDouble(),
+        surface = readEnum(SurfaceType.entries),
+        roadClass = readEnum(RoadClass.entries),
+        cycleway = readEnum(CyclewayType.entries),
+        trackType = readEnum(TrackType.entries),
+        smoothness = readEnum(Smoothness.entries),
+        trafficStress = readEnum(TrafficStress.entries),
+        ferry = readNullableBoolean(),
+        tunnel = readNullableBoolean(),
+        steps = readNullableBoolean(),
+        unpaved = readNullableBoolean(),
+        limitedAccess = readNullableBoolean(),
+        bikeCarryLikely = readNullableBoolean(),
+    )
+
+    private fun DataOutputStream.writeNullableBoolean(value: Boolean?) {
+        writeByte(when (value) { null -> 0; false -> 1; true -> 2 })
+    }
+
+    private fun DataInputStream.readNullableBoolean(): Boolean? = when (readUnsignedByte()) {
+        0 -> null
+        1 -> false
+        2 -> true
+        else -> throw IOException("Invalid nullable boolean")
+    }
+
+    private fun <T : Enum<T>> DataInputStream.readEnum(values: List<T>): T {
+        val ordinal = readInt()
+        if (ordinal !in values.indices) throw IOException("Invalid enum ordinal")
+        return values[ordinal]
+    }
+
     companion object {
-        private const val MAGIC = 0x574C5202
+        private const val MAGIC = 0x574C5203
+        private const val MAX_ANNOTATIONS_PER_SEGMENT = 100_000
+        private const val MAX_DEPENDENCIES_PER_SEGMENT = 512
         private val KEY_PATTERN = Regex("[a-f0-9]{64}")
         private val FILE_PATTERN = Regex("[a-f0-9]{64}\\.route")
     }
