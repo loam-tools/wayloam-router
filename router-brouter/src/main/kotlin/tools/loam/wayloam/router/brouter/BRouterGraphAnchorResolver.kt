@@ -3,6 +3,7 @@ package tools.loam.wayloam.router.brouter
 import btools.mapaccess.MatchedWaypoint
 import btools.mapaccess.NodesCache
 import btools.mapaccess.OsmNodePairSet
+import btools.router.OsmNodeNamed
 import btools.router.ProfileCache
 import btools.router.RoutingContext
 import btools.router.RoutingParamCollector
@@ -44,8 +45,10 @@ class BRouterGraphAnchorResolver(
                 for ((i, seed) in seeds.withIndex()) {
                     currentCoroutineContext().ensureActive()
                     val wp = MatchedWaypoint().apply {
-                        waypoint = collector.readPositions(doubleArrayOf(seed.longitude),
-                            doubleArrayOf(seed.latitude)).single()
+                        waypoint = OsmNodeNamed().apply {
+                            ilon = ((seed.longitude + 180.0) * 1_000_000.0 + 0.5).toInt()
+                            ilat = ((seed.latitude + 90.0) * 1_000_000.0 + 0.5).toInt()
+                        }
                         name = "anchor"
                     }
                     try {
