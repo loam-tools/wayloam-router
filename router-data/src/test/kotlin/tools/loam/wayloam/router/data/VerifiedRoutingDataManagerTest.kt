@@ -80,7 +80,7 @@ class VerifiedRoutingDataManagerTest {
                 StandardOpenOption.APPEND,
             )
             RoutingDataDownloadResult(
-                bytesWritten = (bytes.size - request.resumeFromBytes).coerceAtLeast(0L),
+                bytesWritten = (bytes.size.toLong() - request.resumeFromBytes).coerceAtLeast(0L),
                 resumed = request.resumeFromBytes > 0L,
             )
         }
