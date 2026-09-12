@@ -67,6 +67,9 @@ class LocalBRouterSmokeTest {
                     )
                 )
             }
+            assertTrue("Real BRouter route should expose WayTag annotations", result.annotations.isNotEmpty())
+            assertTrue("Real BRouter route should record the RD5 files it opened", result.dataDependencies.isNotEmpty())
+            assertTrue(result.dataDependencies.keys.all { it.endsWith(".rd5") })
 
             runBlocking {
                 // Route all shipped presets through the public runtime, with bundled profile
@@ -76,11 +79,17 @@ class LocalBRouterSmokeTest {
                 for (profile in RouteProfile.entries) {
                     val config = LocalRouterConfig(working, "pinned-dreieich-fixture", 30_000)
                     val request = RouteRequest(endpoints.first, endpoints.second, profile)
-                    val cold = EmbeddedWayloamRouter.create(config).route(request) {}
+                    val coldRuntime = EmbeddedWayloamRouter.create(config)
+                    val cold = coldRuntime.route(request) {}
                     val warm = EmbeddedWayloamRouter.create(config).route(request) {}
                     assertTrue(cold.metrics.distanceMeters > 0)
+                    assertTrue("Public runtime should retain real route annotations", cold.analysis.annotations.isNotEmpty())
+                    assertTrue("Public runtime should retain exact RD5 dependencies", cold.dataDependencies.isNotEmpty())
+                    assertEquals(cold.dataDependencies.keys, coldRuntime.observedDataFiles(cold))
                     assertTrue("Reopened runtime must hit disk cache", warm.cacheHit)
                     assertEquals(cold.points, warm.points)
+                    assertEquals(cold.analysis.annotations, warm.analysis.annotations)
+                    assertEquals(cold.dataDependencies, warm.dataDependencies)
                 }
             }
 
@@ -270,4 +279,3 @@ class LocalBRouterSmokeTest {
         )
     }
 }
-
