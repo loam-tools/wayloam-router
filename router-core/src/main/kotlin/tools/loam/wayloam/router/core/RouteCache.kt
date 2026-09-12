@@ -1,17 +1,21 @@
 package tools.loam.wayloam.router.core
 
 import tools.loam.wayloam.router.api.GeoPoint
+import tools.loam.wayloam.router.api.RouteProfile
 import tools.loam.wayloam.router.api.RouteRequest
 import tools.loam.wayloam.router.api.RouteResult
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.security.MessageDigest
-import java.util.concurrent.ConcurrentHashMap
 
 data class RouteIdentity(
     val engineVersion: String,
     val profileVersion: String,
     val dataVersion: String,
+    val plannerVersion: String = "legacy",
 )
 
+/** Completed routes and single-section results share one bounded cache. */
 interface RouteCache {
     fun get(key: String): RouteResult?
     fun put(key: String, result: RouteResult)
@@ -22,42 +26,62 @@ object NoRouteCache : RouteCache {
     override fun put(key: String, result: RouteResult) = Unit
 }
 
-class InMemoryRouteCache : RouteCache {
-    private val values = ConcurrentHashMap<String, RouteResult>()
+class InMemoryRouteCache(private val maxEntries: Int = 128) : RouteCache {
+    init { require(maxEntries > 0) }
+    private val values = LinkedHashMap<String, RouteResult>(16, 0.75f, true)
 
-    override fun get(key: String): RouteResult? = values[key]
+    @Synchronized override fun get(key: String): RouteResult? = values[key]?.snapshot()
 
-    override fun put(key: String, result: RouteResult) {
-        values[key] = result
+    @Synchronized override fun put(key: String, result: RouteResult) {
+        values[key] = result.snapshot()
+        while (values.size > maxEntries) values.remove(values.keys.first())
     }
 
-    fun clear() = values.clear()
+    @Synchronized fun clear() = values.clear()
 }
 
+internal fun RouteResult.snapshot() = copy(
+    points = points.toList(),
+    segments = segments.map { it.copy(points = it.points.toList()) },
+)
+
 object RouteCacheKey {
-    fun build(request: RouteRequest, identity: RouteIdentity): String {
-        val canonical = buildString {
-            append(identity.engineVersion).append('|')
-            append(identity.profileVersion).append('|')
-            append(identity.dataVersion).append('|')
-            append(request.profile.name).append('|')
-            appendPoint(request.start)
-            append('|')
-            request.via.forEach { point ->
-                appendPoint(point)
-                append(';')
-            }
-            append('|')
-            appendPoint(request.end)
-            append('|')
-            append(request.maxSectionDistanceKm)
-        }
-        return MessageDigest.getInstance("SHA-256")
-            .digest(canonical.toByteArray(Charsets.UTF_8))
-            .joinToString("") { byte -> "%02x".format(byte) }
+    fun build(request: RouteRequest, identity: RouteIdentity): String = digest {
+        writeUTF("route-v2")
+        writeIdentity(identity)
+        writeUTF(identity.plannerVersion)
+        writeUTF(request.profile.name)
+        writePoint(request.start)
+        writeInt(request.via.size)
+        request.via.forEach { writePoint(it) }
+        writePoint(request.end)
+        writeDouble(request.maxSectionDistanceKm)
     }
 
-    private fun StringBuilder.appendPoint(point: GeoPoint) {
-        append("%.7f,%.7f".format(java.util.Locale.US, point.latitude, point.longitude))
+    /** Index, stage targets, total timeout and distant via points do not affect a section. */
+    fun section(start: GeoPoint, end: GeoPoint, profile: RouteProfile, identity: RouteIdentity): String = digest {
+        writeUTF("section-v2")
+        writeIdentity(identity)
+        writeUTF(profile.name)
+        writePoint(start)
+        writePoint(end)
+    }
+
+    private fun DataOutputStream.writeIdentity(identity: RouteIdentity) {
+        writeUTF(identity.engineVersion)
+        writeUTF(identity.profileVersion)
+        writeUTF(identity.dataVersion)
+    }
+
+    private fun DataOutputStream.writePoint(point: GeoPoint) {
+        writeDouble(if (point.latitude == 0.0) 0.0 else point.latitude)
+        writeDouble(if (point.longitude == 0.0) 0.0 else point.longitude)
+    }
+
+    private fun digest(write: DataOutputStream.() -> Unit): String {
+        val bytes = ByteArrayOutputStream()
+        DataOutputStream(bytes).use { it.write() }
+        return MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray())
+            .joinToString("") { "%02x".format(it) }
     }
 }

@@ -3,6 +3,7 @@ package tools.loam.wayloam.router.core
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 import tools.loam.wayloam.router.api.GeoPoint
 import tools.loam.wayloam.router.api.RouteProfile
 import tools.loam.wayloam.router.api.RouteRequest
@@ -11,7 +12,7 @@ class SectionPlannerTest {
     private val planner = FixedDistanceSectionPlanner()
 
     @Test
-    fun shortRouteStaysSingleSection() {
+    fun shortRouteStaysSingleSection() = runBlocking {
         val request = RouteRequest(
             start = GeoPoint(49.3988, 8.6724),
             end = GeoPoint(50.1109, 8.6821),
@@ -26,7 +27,7 @@ class SectionPlannerTest {
     }
 
     @Test
-    fun longRouteIsSplitIntoBoundedSections() {
+    fun longRouteIsSplitIntoBoundedSections() = runBlocking {
         val request = RouteRequest(
             start = GeoPoint(49.3988, 8.6724),
             end = GeoPoint(59.9139, 10.7522),
@@ -47,7 +48,7 @@ class SectionPlannerTest {
     }
 
     @Test
-    fun explicitViaPointRemainsASectionBoundary() {
+    fun explicitViaPointRemainsASectionBoundary() = runBlocking {
         val via = GeoPoint(53.5511, 9.9937)
         val request = RouteRequest(
             start = GeoPoint(49.3988, 8.6724),
@@ -63,3 +64,4 @@ class SectionPlannerTest {
         assertTrue(sections.any { it.start == via })
     }
 }
+

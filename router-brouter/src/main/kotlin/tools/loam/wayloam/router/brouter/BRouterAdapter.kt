@@ -17,8 +17,8 @@ data class BRouterProfilePreset(
     val parameters: Map<String, String>,
 ) {
     init {
-        require(baseProfile.isNotBlank())
-        require(parameters.values.all { it.toDoubleOrNull() != null }) {
+        require(Regex("[a-zA-Z0-9_-]+").matches(baseProfile))
+        require(parameters.values.all { it.toDoubleOrNull()?.isFinite() == true }) {
             "BRouter profile overrides must use numeric expression values"
         }
     }
@@ -34,6 +34,8 @@ data class BRouterProfilePreset(
 }
 
 object WayloamProfiles {
+    val version: String get() = listOf(DIRECT, TOURING, BIKEPACKING).joinToString(";") { it.versionKey }
+
     private const val OFF = "0"
     private const val ON = "1"
 
@@ -100,7 +102,7 @@ class BRouterSectionEngine(
     private val backend: EmbeddedBRouterBackend,
 ) : RouteSectionEngine {
     override val engineId: String = "brouter"
-    override val engineVersion: String = BRouterBaseline.RELEASE
+    override val engineVersion: String = "${BRouterBaseline.RELEASE}+wayloam.2"
 
     override suspend fun routeSection(
         index: Int,
@@ -126,3 +128,4 @@ class BRouterSectionEngine(
         )
     }
 }
+

@@ -1,5 +1,8 @@
 package tools.loam.wayloam.router.data
 
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.BufferedInputStream
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -52,6 +55,7 @@ class VerifiedRoutingDataManager(
     private val transport: RoutingDataTransport,
     private val clock: () -> Instant = Instant::now,
 ) {
+    private val mutation = Mutex()
     private val stagingRoot: Path = segmentsRoot.resolve(".staging")
     private val metadataRoot: Path = segmentsRoot.resolve(".metadata")
 
@@ -59,7 +63,11 @@ class VerifiedRoutingDataManager(
         tiles.sortedWith(compareBy(Rd5TileId::westLongitude, Rd5TileId::southLatitude))
             .map { ensureTile(it) }
 
-    suspend fun ensureTile(tile: Rd5TileId): RoutingTileInstallResult {
+    suspend fun ensureTile(tile: Rd5TileId): RoutingTileInstallResult = withContext(Dispatchers.IO) {
+        mutation.withLock { ensureTileLocked(tile) }
+    }
+
+    private suspend fun ensureTileLocked(tile: Rd5TileId): RoutingTileInstallResult {
         val artifact = manifest.artifact(tile) ?: throw MissingRoutingDataArtifactException(tile)
         val finalPath = segmentsRoot.resolve(tile.fileName)
 
@@ -75,7 +83,8 @@ class VerifiedRoutingDataManager(
                 metadata.sourceVersion == artifact.sourceVersion
             val contentHashPinsArtifact = artifact.normalizedSha256 != null && verification.valid
 
-            if (verification.valid && (provenanceMatches || contentHashPinsArtifact)) {
+            val localHashMatches = metadata == null || metadata.sha256 == verification.sha256
+            if (verification.valid && (contentHashPinsArtifact || provenanceMatches && localHashMatches)) {
                 ensureMetadata(installedPath = finalPath, artifact = artifact, verification = verification)
                 return result(
                     artifact = artifact,
@@ -88,11 +97,18 @@ class VerifiedRoutingDataManager(
 
             // A valid-looking file with stale or unknown provenance must not be relabelled as current.
             // Redownload it through the same staging path so remote version changes are real refreshes.
-            Files.deleteIfExists(finalPath)
-            Files.deleteIfExists(metadataPath(tile))
+            // Keep the previous installation available until a complete replacement is verified.
         }
 
         val stagingPath = stagingPath(tile)
+        val stagingIdentity = stagingRoot.resolve("${tile.fileName}.source")
+        val identity = listOf(artifact.sourceId, artifact.sourceVersion, artifact.downloadUrl,
+            artifact.sizeBytes, artifact.normalizedSha256).joinToString("\n")
+        val oldIdentity = runCatching { String(Files.readAllBytes(stagingIdentity), Charsets.UTF_8) }.getOrNull()
+        // Legacy partials can only be reused when a trusted content digest pins the entire file.
+        if ((oldIdentity != null && oldIdentity != identity) ||
+            (oldIdentity == null && artifact.normalizedSha256 == null)) Files.deleteIfExists(stagingPath)
+        Files.write(stagingIdentity, identity.toByteArray(Charsets.UTF_8))
         val resumeFrom = if (Files.isRegularFile(stagingPath)) Files.size(stagingPath) else 0L
 
         val response = transport.download(
@@ -115,19 +131,25 @@ class VerifiedRoutingDataManager(
             throw RoutingDataVerificationException(verification.failureMessage(tile))
         }
 
+        currentCoroutineContext().ensureActive()
         promoteAtomically(stagingPath, finalPath)
         writeMetadata(tile, artifact, verification)
+        Files.deleteIfExists(stagingIdentity)
 
         return result(
             artifact = artifact,
             path = finalPath,
             downloaded = true,
-            resumed = response.resumed || resumeFrom > 0L,
+            resumed = response.resumed,
             verification = verification,
         )
     }
 
-    suspend fun status(tile: Rd5TileId): RoutingTileStatus {
+    suspend fun status(tile: Rd5TileId): RoutingTileStatus = withContext(Dispatchers.IO) {
+        mutation.withLock { statusLocked(tile) }
+    }
+
+    private suspend fun statusLocked(tile: Rd5TileId): RoutingTileStatus {
         val finalPath = segmentsRoot.resolve(tile.fileName)
         val stagedPath = stagingPath(tile)
         val installedBytes = sizeOrZero(finalPath)
@@ -154,6 +176,7 @@ class VerifiedRoutingDataManager(
         val state = when {
             !verification.valid -> RoutingTileState.CORRUPT
             metadata == null -> RoutingTileState.INSTALLED_UNVERIFIED
+            metadata.sha256 != verification.sha256 -> RoutingTileState.CORRUPT
             metadata.sourceId != artifact.sourceId || metadata.sourceVersion != artifact.sourceVersion ->
                 RoutingTileState.INSTALLED_UNVERIFIED
             else -> RoutingTileState.INSTALLED_VERIFIED
@@ -169,10 +192,14 @@ class VerifiedRoutingDataManager(
         )
     }
 
-    fun remove(tile: Rd5TileId) {
-        Files.deleteIfExists(segmentsRoot.resolve(tile.fileName))
-        Files.deleteIfExists(stagingPath(tile))
-        Files.deleteIfExists(metadataPath(tile))
+    suspend fun remove(tile: Rd5TileId) = withContext(Dispatchers.IO) {
+        mutation.withLock {
+            Files.deleteIfExists(segmentsRoot.resolve(tile.fileName))
+            Files.deleteIfExists(stagingPath(tile))
+            Files.deleteIfExists(stagingRoot.resolve("${tile.fileName}.source"))
+            Files.deleteIfExists(metadataPath(tile))
+            Unit
+        }
     }
 
     fun storageBytes(): Long {
@@ -202,7 +229,7 @@ class VerifiedRoutingDataManager(
         check(Files.isRegularFile(installedPath))
     }
 
-    private fun verify(path: Path, artifact: Rd5RemoteArtifact): Verification {
+    private suspend fun verify(path: Path, artifact: Rd5RemoteArtifact): Verification {
         if (!Files.isRegularFile(path)) return Verification(0L, "", false, "file is missing")
         val size = sizeOrZero(path)
         if (size <= 0L) return Verification(size, "", false, "file is empty")
@@ -288,11 +315,12 @@ class VerifiedRoutingDataManager(
         sourceVersion = artifact.sourceVersion,
     )
 
-    private fun sha256(path: Path): String {
+    private suspend fun sha256(path: Path): String {
         val digest = MessageDigest.getInstance("SHA-256")
         BufferedInputStream(Files.newInputStream(path)).use { input ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
             while (true) {
+                currentCoroutineContext().ensureActive()
                 val read = input.read(buffer)
                 if (read < 0) break
                 if (read > 0) digest.update(buffer, 0, read)
@@ -321,3 +349,4 @@ class VerifiedRoutingDataManager(
         val sha256: String,
     )
 }
+

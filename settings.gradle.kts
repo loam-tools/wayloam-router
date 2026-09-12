@@ -1,7 +1,7 @@
 pluginManagement {
     repositories {
-        google()
         mavenCentral()
+        google()
         gradlePluginPortal()
     }
 }
@@ -9,8 +9,8 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        google()
         mavenCentral()
+        google()
     }
 }
 
@@ -22,6 +22,11 @@ include(
     ":router-data",
     ":router-http",
     ":router-brouter",
-    ":router-android",
+    ":router-runtime",
     ":router-benchmark",
 )
+
+// JVM routing, benchmarks and CI can run without an Android SDK.
+if (providers.gradleProperty("includeAndroid").orNull != "false") {
+    include(":router-android")
+}

@@ -40,5 +40,7 @@ dependencies {
     implementation(libs.coroutines.core)
 
     testImplementation(libs.junit)
+    testImplementation(project(":router-runtime"))
     testImplementation("org.openstreetmap.osmosis:osmosis-osm-binary:0.48.3")
 }
+

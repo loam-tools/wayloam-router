@@ -83,6 +83,9 @@ class BRouterHttpDataSource(
             method = "GET",
             url = request.artifact.downloadUrl,
             range = resumeFrom.takeIf { it > 0L }?.let { "bytes=$it-" },
+            ifRange = request.artifact.sourceVersion.takeIf { resumeFrom > 0L }
+                ?.takeIf { it.startsWith("etag:") || it.startsWith("last-modified:") }
+                ?.substringAfter(':'),
         )
 
         try {
@@ -112,6 +115,14 @@ class BRouterHttpDataSource(
                 )
             }
 
+            val version = request.artifact.sourceVersion
+            val observedVersion = when {
+                version.startsWith("etag:") -> response.connection.getHeaderField("ETag")?.let { "etag:${it.trim()}" }
+                version.startsWith("last-modified:") -> response.connection.getHeaderField("Last-Modified")?.let { "last-modified:${it.trim()}" }
+                else -> version
+            }
+            if (version != observedVersion) throw RoutingDataHttpException(
+                request.artifact.downloadUrl, response.status, "Routing data changed since metadata lookup; refresh and retry")
             val resumed = resumeFrom > 0L && response.status == HttpURLConnection.HTTP_PARTIAL
             if (resumed) {
                 validateContentRange(response.connection.getHeaderField("Content-Range"), resumeFrom)
@@ -137,11 +148,17 @@ class BRouterHttpDataSource(
                 Files.newOutputStream(request.destination, *options).buffered().use { output ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                     while (true) {
+                        if (Thread.currentThread().isInterrupted) throw InterruptedException("Download cancelled")
                         val read = input.read(buffer)
                         if (read < 0) break
                         if (read == 0) continue
                         output.write(buffer, 0, read)
                         written += read
+                        request.artifact.sizeBytes?.let { expected ->
+                            if (written + (if (resumed) resumeFrom else 0L) > expected) {
+                                throw IOException("Routing data exceeds the advertised size")
+                            }
+                        }
                     }
                 }
             }
@@ -159,6 +176,7 @@ class BRouterHttpDataSource(
         method: String,
         url: String,
         range: String? = null,
+        ifRange: String? = null,
     ): HttpResponse {
         var current = URI(url)
         repeat(MAX_REDIRECTS + 1) { redirectCount ->
@@ -174,6 +192,7 @@ class BRouterHttpDataSource(
                 setRequestProperty("Accept", "application/octet-stream")
                 setRequestProperty("Accept-Encoding", "identity")
                 if (range != null) setRequestProperty("Range", range)
+                if (ifRange != null) setRequestProperty("If-Range", ifRange)
             }
             val status = connection.responseCode
             if (status !in REDIRECT_STATUSES) {
@@ -188,7 +207,9 @@ class BRouterHttpDataSource(
             if (redirectCount >= MAX_REDIRECTS) {
                 throw RoutingDataHttpException(current.toString(), status, "Too many redirects")
             }
-            current = current.resolve(location)
+            val next = current.resolve(location)
+            require(current.scheme != "https" || next.scheme == "https") { "Refusing HTTPS downgrade" }
+            current = next
         }
         error("unreachable")
     }
@@ -280,3 +301,4 @@ class RemoteRoutingDataNotFoundException(url: String) :
 
 class TransientRoutingDataHttpException(url: String, status: Int, message: String?) :
     RoutingDataHttpException(url, status, message)
+
