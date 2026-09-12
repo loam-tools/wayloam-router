@@ -1,6 +1,7 @@
 package tools.loam.wayloam.router.brouter
 
 import tools.loam.wayloam.router.api.GeoPoint
+import tools.loam.wayloam.router.api.RouteAnnotation
 import tools.loam.wayloam.router.api.RouteMetrics
 import tools.loam.wayloam.router.api.RoutePreferences
 import tools.loam.wayloam.router.api.RouteProfile
@@ -80,12 +81,7 @@ object WayloamProfiles {
         RouteProfile.BIKEPACKING -> BIKEPACKING
     }
 
-    /**
-     * Applies only variables already exposed by the pinned upstream profiles. Preferences that need
-     * new profile logic (for example explicit tunnel or cycleway penalties) stay in the public model
-     * and cache identity until that behavior can be implemented and benchmarked without pretending
-     * the upstream profile already supports it.
-     */
+    /** Applies only variables exposed by the pinned upstream profiles. */
     fun forRequest(profile: RouteProfile, preferences: RoutePreferences): BRouterProfilePreset {
         val base = forProfile(profile)
         val parameters = base.parameters.toMutableMap().apply {
@@ -114,6 +110,8 @@ data class BRouterBackendRequest(
 data class BRouterBackendResult(
     val points: List<GeoPoint>,
     val metrics: RouteMetrics,
+    val annotations: List<RouteAnnotation> = emptyList(),
+    val dataDependencies: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -128,7 +126,7 @@ class BRouterSectionEngine(
     private val backend: EmbeddedBRouterBackend,
 ) : RouteSectionEngine {
     override val engineId: String = "brouter"
-    override val engineVersion: String = "${BRouterBaseline.RELEASE}+wayloam.3"
+    override val engineVersion: String = "${BRouterBaseline.RELEASE}+wayloam.4"
 
     override suspend fun routeSection(
         index: Int,
@@ -159,6 +157,8 @@ class BRouterSectionEngine(
             points = result.points,
             metrics = result.metrics,
             engine = "$engineId/$engineVersion",
+            annotations = result.annotations,
+            dataDependencies = result.dataDependencies,
         )
     }
 }
