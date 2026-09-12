@@ -63,5 +63,29 @@ class Rd5TileTest {
             tiles.map(Rd5TileId::fileName).toSet(),
         )
     }
-}
 
+    @Test
+    fun corridorUsesFewerTilesThanContinentalEnvelope() {
+        val route = listOf(
+            GeoPoint(38.7223, -9.1393), // Lisbon
+            GeoPoint(48.8566, 2.3522),  // Paris
+            GeoPoint(52.5200, 13.4050), // Berlin
+            GeoPoint(60.1699, 24.9384), // Helsinki
+        )
+        val envelope = Rd5TileSet.forEnvelope(route)
+        val corridor = Rd5TileSet.forCorridor(route, safetyTileRadius = 1)
+
+        assertTrue(corridor.size < envelope.size)
+        route.forEach { assertTrue(Rd5TileId.from(it) in corridor) }
+    }
+
+    @Test
+    fun corridorWrapsAcrossDatelineWithoutRequestingThePlanet() {
+        val route = listOf(GeoPoint(10.0, 179.0), GeoPoint(10.0, -179.0))
+        val corridor = Rd5TileSet.forCorridor(route, safetyTileRadius = 0, sampleSpacingKm = 50.0)
+
+        assertTrue(corridor.size <= 2)
+        assertTrue(corridor.any { it.fileName == "E175_N10.rd5" })
+        assertTrue(corridor.any { it.fileName == "W180_N10.rd5" })
+    }
+}
